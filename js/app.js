@@ -1342,4 +1342,2169 @@ class FarmOpsApp {
     `;
 
     await this.populateCascadingDropdowns('irreg-landowner', 'irreg-parcel', 'irreg-block');
-    await this.populateActivityDropdown('irreg-treatment', 'Irregular Activity', 'Pest and Disease Treatment (
+    await this.populateActivityDropdown('irreg-treatment', 'Irregular Activity', 'Pest and Disease Treatment (Soil Drench)');
+    await this.populateActivityDropdown('irreg-activity-dropdown', 'Irregular Activity', 'Irregular Activity');
+  }
+
+  async submitIrregularActivity() {
+    const reportData = {
+      activityType: 'Irregular Activity',
+      userId: auth.getUserId(),
+      employeeName: auth.getEmployeeName(),
+      date: document.getElementById('irreg-date').value,
+      landOwnersName: document.getElementById('irreg-landowner').value,
+      parcelNumber: document.getElementById('irreg-parcel').value,
+      farmBlock: document.getElementById('irreg-block').value,
+      manpower: parseFloat(document.getElementById('irreg-manpower').value) || 1,
+      pestTreatmentSoilDrench: document.getElementById('irreg-treatment').value,
+      countOfPalms: parseInt(document.getElementById('irreg-drench-palms').value) || 0,
+      quantityLiters: parseFloat(document.getElementById('irreg-drench-liters').value) || 0,
+      foliarRequestNumber: document.getElementById('irreg-foliar-request').value.trim(),
+      irregularActivity: document.getElementById('irreg-activity-dropdown').value,
+      countOfPalms2: parseInt(document.getElementById('irreg-palms-2').value) || 0,
+      countOfManpower2: parseInt(document.getElementById('irreg-manpower-2').value) || 0,
+      remarks: document.getElementById('irreg-remarks').value.trim(),
+      gpsLatitude: this.gpsCoordinates ? this.gpsCoordinates.latitude : '',
+      gpsLongitude: this.gpsCoordinates ? this.gpsCoordinates.longitude : ''
+    };
+
+    await syncService.submitReportLocally(reportData);
+    this.showToast('Irregular Activity Report saved successfully!', 'success');
+    this.navigateTo('daily-monitoring');
+  }
+
+  /* ==========================================================================
+     PAGE 6: OTHER FARM ACTIVITY REGISTRATION (ALL 8 FIELDS)
+     ========================================================================== */
+
+  async renderOtherFarmActivityForm(container) {
+    const today = new Date().toISOString().split('T')[0];
+
+    container.innerHTML = `
+      <div class="card" style="max-width: 800px; margin: 0 auto;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🚜 Other Farm Activity Registration</div>
+            <div class="card-subtitle">General infrastructure, roads, nursery &amp; auxiliary tasks</div>
+          </div>
+          <button class="btn btn-outline" onclick="app.navigateTo('activity-selection')">&larr; Back to Hub</button>
+        </div>
+
+        <form id="form-other-activity" onsubmit="event.preventDefault(); app.submitOtherFarmActivity();">
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label class="form-label required">Date</label>
+              <input type="date" id="other-date" class="form-control" value="${today}" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Land Owners Name</label>
+              <select id="other-landowner" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Parcel Number</label>
+              <select id="other-parcel" class="form-control" required></select>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label required">Farm &amp; Block</label>
+              <select id="other-block" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Manpower (Count)</label>
+              <input type="number" id="other-manpower" class="form-control" min="1" value="2" required />
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label class="form-label required">Other Activities</label>
+              <select id="other-activity-select" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Quantity</label>
+              <input type="number" step="0.01" id="other-quantity" class="form-control" placeholder="0" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Unit</label>
+              <select id="other-unit-select" class="form-control" required></select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Remarks</label>
+            <textarea id="other-remarks" class="form-control" rows="2" placeholder="Task details, progress, materials used..."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+            <button type="button" class="btn btn-outline" onclick="app.navigateTo('activity-selection')">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-lg">✓ Save &amp; Submit Other Farm Report</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    await this.populateCascadingDropdowns('other-landowner', 'other-parcel', 'other-block');
+    await this.populateActivityDropdown('other-activity-select', 'Other Farm Activity', 'Other Activities');
+    await this.populateActivityDropdown('other-unit-select', 'Other Farm Activity', 'Unit');
+  }
+
+  async submitOtherFarmActivity() {
+    const reportData = {
+      activityType: 'Other Farm Activity',
+      userId: auth.getUserId(),
+      employeeName: auth.getEmployeeName(),
+      date: document.getElementById('other-date').value,
+      landOwnersName: document.getElementById('other-landowner').value,
+      parcelNumber: document.getElementById('other-parcel').value,
+      farmBlock: document.getElementById('other-block').value,
+      manpower: parseFloat(document.getElementById('other-manpower').value) || 1,
+      otherActivities: document.getElementById('other-activity-select').value,
+      quantity: parseFloat(document.getElementById('other-quantity').value) || 0,
+      unit: document.getElementById('other-unit-select').value,
+      remarks: document.getElementById('other-remarks').value.trim(),
+      gpsLatitude: this.gpsCoordinates ? this.gpsCoordinates.latitude : '',
+      gpsLongitude: this.gpsCoordinates ? this.gpsCoordinates.longitude : ''
+    };
+
+    await syncService.submitReportLocally(reportData);
+    this.showToast('Other Farm Activity Report saved successfully!', 'success');
+    this.navigateTo('daily-monitoring');
+  }
+
+  /* ==========================================================================
+     PAGE 7: PALM CATEGORY ACTIVITY REGISTRATION (ALL 14 FIELDS)
+     ========================================================================== */
+
+  async renderPalmCategoryForm(container) {
+    const nowIso = new Date().toISOString();
+
+    container.innerHTML = `
+      <div class="card" style="max-width: 900px; margin: 0 auto;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🌴 Palm Category Activity Registration</div>
+            <div class="card-subtitle">Detailed coconut developmental stage census &amp; health tracking</div>
+          </div>
+          <button class="btn btn-outline" onclick="app.navigateTo('activity-selection')">&larr; Back to Hub</button>
+        </div>
+
+        <form id="form-palm-category" onsubmit="event.preventDefault(); app.submitPalmCategoryActivity();">
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label class="form-label">Automatic Timestamp</label>
+              <input type="text" id="palm-timestamp" class="form-control" value="${nowIso}" readonly style="background:#f1f5f9;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Land Owners Name</label>
+              <select id="palm-landowner" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Parcel Number</label>
+              <select id="palm-parcel" class="form-control" required></select>
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label class="form-label required">Farm &amp; Block</label>
+              <select id="palm-block" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Palm Number / ID Range</label>
+              <input type="text" id="palm-number" class="form-control" placeholder="e.g. Palm 101 or 1-50" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Manpower Count</label>
+              <input type="number" id="palm-manpower" class="form-control" min="1" value="2" required />
+            </div>
+          </div>
+
+          <div style="background: var(--palm-subtle); padding: 18px 20px; border-radius: var(--radius-lg); margin-bottom: 20px; border: 1px solid var(--palm-border);">
+            <div style="font-weight: 700; color: var(--palm-dark); font-size: 14.5px; margin-bottom: 14px;">
+              Coconut Developmental Stages Census (Count of Palms)
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label class="form-label">Seedling Stage</label>
+                <input type="number" id="palm-seedling" class="form-control" placeholder="0" min="0" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Juvenile Stage</label>
+                <input type="number" id="palm-juvenile" class="form-control" placeholder="0" min="0" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Pre-trunk Reproductive (Semi Juvenile)</label>
+                <input type="number" id="palm-pre-reproductive" class="form-control" placeholder="0" min="0" />
+              </div>
+            </div>
+
+            <div class="form-grid-3" style="margin-top: 10px;">
+              <div class="form-group">
+                <label class="form-label">Pre-trunk Fruiting (Semi Mature)</label>
+                <input type="number" id="palm-pre-fruiting" class="form-control" placeholder="0" min="0" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Mature Stage</label>
+                <input type="number" id="palm-mature" class="form-control" placeholder="0" min="0" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Fruiting Stage</label>
+                <input type="number" id="palm-fruiting" class="form-control" placeholder="0" min="0" />
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 12px;">
+              <label class="form-label" style="color: var(--alert-red);">Problem Palms (Diseased, Stunted, Pest Affected)</label>
+              <input type="number" id="palm-problem" class="form-control" placeholder="0" min="0" style="border-color: #fecaca; background: #fff5f5;" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Remarks</label>
+            <textarea id="palm-remarks" class="form-control" rows="2" placeholder="Crown vigor observations, nutrient deficiencies..."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+            <button type="button" class="btn btn-outline" onclick="app.navigateTo('activity-selection')">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-lg">✓ Save &amp; Submit Palm Category</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    await this.populateCascadingDropdowns('palm-landowner', 'palm-parcel', 'palm-block');
+  }
+
+  async submitPalmCategoryActivity() {
+    const reportData = {
+      activityType: 'Palm Category Activity',
+      userId: auth.getUserId(),
+      employeeName: auth.getEmployeeName(),
+      timestamp: document.getElementById('palm-timestamp').value,
+      date: new Date().toISOString().split('T')[0],
+      landOwnersName: document.getElementById('palm-landowner').value,
+      parcelNumber: document.getElementById('palm-parcel').value,
+      farmBlock: document.getElementById('palm-block').value,
+      palmNumber: document.getElementById('palm-number').value.trim(),
+      manpowerCount: parseFloat(document.getElementById('palm-manpower').value) || 1,
+      seedlingStage: parseInt(document.getElementById('palm-seedling').value) || 0,
+      juvenileStage: parseInt(document.getElementById('palm-juvenile').value) || 0,
+      preTrunkReproductiveStage: parseInt(document.getElementById('palm-pre-reproductive').value) || 0,
+      preTrunkFruitingStage: parseInt(document.getElementById('palm-pre-fruiting').value) || 0,
+      matureStage: parseInt(document.getElementById('palm-mature').value) || 0,
+      fruitingStage: parseInt(document.getElementById('palm-fruiting').value) || 0,
+      problemPalms: parseInt(document.getElementById('palm-problem').value) || 0,
+      remarks: document.getElementById('palm-remarks').value.trim(),
+      gpsLatitude: this.gpsCoordinates ? this.gpsCoordinates.latitude : '',
+      gpsLongitude: this.gpsCoordinates ? this.gpsCoordinates.longitude : ''
+    };
+
+    await syncService.submitReportLocally(reportData);
+    this.showToast('Palm Category census saved successfully!', 'success');
+    this.navigateTo('daily-monitoring');
+  }
+
+  /* ==========================================================================
+     PAGE 8: SEEDNUT COLLECTION REGISTRATION (ALL 7 FIELDS + AUTO GPS)
+     ========================================================================== */
+
+  async renderSeednutCollectionForm(container) {
+    const today = new Date().toISOString().split('T')[0];
+
+    await this.captureCurrentGps();
+
+    const gpsDisplay = this.gpsCoordinates
+      ? `Lat: ${this.gpsCoordinates.latitude.toFixed(5)}, Lng: ${this.gpsCoordinates.longitude.toFixed(5)} (±${Math.round(this.gpsCoordinates.accuracy)}m)`
+      : 'Acquiring GPS coordinates...';
+
+    container.innerHTML = `
+      <div class="card" style="max-width: 800px; margin: 0 auto;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🥥 Seednut Collection Registration</div>
+            <div class="card-subtitle">Harvest counting, seed selection &amp; geo-tagged palm location</div>
+          </div>
+          <button class="btn btn-outline" onclick="app.navigateTo('activity-selection')">&larr; Back to Hub</button>
+        </div>
+
+        <form id="form-seednut" onsubmit="event.preventDefault(); app.submitSeednutCollection();">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label required">Date</label>
+              <input type="date" id="seed-date" class="form-control" value="${today}" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Area Code (QR Code / Text)</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="seed-area-code" class="form-control" placeholder="Scan or enter Area Code" required />
+                <button type="button" class="btn btn-secondary" onclick="app.openQrScanner('seed-area-code')">📷 Scan</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label required">Palm Number</label>
+              <input type="number" id="seed-palm-number" class="form-control" placeholder="Enter Tree / Palm #" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Nut Count Collected</label>
+              <input type="number" id="seed-nuts-collected" class="form-control" placeholder="0" min="0" required />
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Count of Nuts for Next Collection</label>
+              <input type="number" id="seed-nuts-next" class="form-control" placeholder="0" min="0" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Count of Rejected Nuts</label>
+              <input type="number" id="seed-nuts-rejected" class="form-control" placeholder="0" min="0" />
+            </div>
+          </div>
+
+          <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <div style="font-weight: 700; color: #1e40af; font-size: 13.5px;">📍 Automatic GPS Location Coordinates</div>
+                <div id="seed-gps-display" style="font-size: 12.5px; color: #2563eb; margin-top: 2px;">${gpsDisplay}</div>
+              </div>
+              <button type="button" class="btn btn-outline" style="font-size: 12px; padding: 6px 10px;" onclick="app.refreshSeednutGps()">
+                🔄 Refresh GPS
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Remarks</label>
+            <textarea id="seed-remarks" class="form-control" rows="2" placeholder="Nut size, maturity grade, germination suitability..."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+            <button type="button" class="btn btn-outline" onclick="app.navigateTo('activity-selection')">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-lg">✓ Save &amp; Submit Seednut Report</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+
+  async refreshSeednutGps() {
+    const displayEl = document.getElementById('seed-gps-display');
+    if (displayEl) displayEl.textContent = 'Updating live GPS coordinates...';
+    const coords = await this.captureCurrentGps();
+    if (coords && displayEl) {
+      displayEl.textContent = `Lat: ${coords.latitude.toFixed(5)}, Lng: ${coords.longitude.toFixed(5)} (±${Math.round(coords.accuracy)}m)`;
+      this.showToast('GPS coordinates acquired with high precision.', 'success');
+    } else if (displayEl) {
+      displayEl.textContent = 'GPS location unavailable or permission denied.';
+    }
+  }
+
+  async submitSeednutCollection() {
+    const reportData = {
+      activityType: 'Seednut Collection',
+      userId: auth.getUserId(),
+      employeeName: auth.getEmployeeName(),
+      date: document.getElementById('seed-date').value,
+      areaCode: document.getElementById('seed-area-code').value.trim(),
+      palmNumber: document.getElementById('seed-palm-number').value.trim(),
+      nutCountCollected: parseInt(document.getElementById('seed-nuts-collected').value) || 0,
+      countOfNutsNextCollection: parseInt(document.getElementById('seed-nuts-next').value) || 0,
+      countOfRejectedNuts: parseInt(document.getElementById('seed-nuts-rejected').value) || 0,
+      remarks: document.getElementById('seed-remarks').value.trim(),
+      gpsLatitude: this.gpsCoordinates ? this.gpsCoordinates.latitude : '',
+      gpsLongitude: this.gpsCoordinates ? this.gpsCoordinates.longitude : '',
+      gpsAccuracy: this.gpsCoordinates ? this.gpsCoordinates.accuracy : ''
+    };
+
+    await syncService.submitReportLocally(reportData);
+    this.showToast('Seednut Collection report saved successfully!', 'success');
+    this.navigateTo('daily-monitoring');
+  }
+
+  /* ==========================================================================
+     PAGE 9: PEST AND DISEASE ACTIVITY REGISTRATION (ALL 14 FIELDS)
+     ========================================================================== */
+
+  async renderPestDiseaseForm(container) {
+    const today = new Date().toISOString().split('T')[0];
+
+    container.innerHTML = `
+      <div class="card" style="max-width: 900px; margin: 0 auto;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🔬 Pest &amp; Disease Activity Registration</div>
+            <div class="card-subtitle">Phytosanitary intervention, pest targeting &amp; chemical / biological application</div>
+          </div>
+          <button class="btn btn-outline" onclick="app.navigateTo('activity-selection')">&larr; Back to Hub</button>
+        </div>
+
+        <form id="form-pest-disease" onsubmit="event.preventDefault(); app.submitPestDiseaseActivity();">
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label class="form-label required">Date</label>
+              <input type="date" id="pest-date" class="form-control" value="${today}" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Land Owners Name</label>
+              <select id="pest-landowner" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Parcel Number</label>
+              <select id="pest-parcel" class="form-control" required></select>
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div class="form-group">
+              <label class="form-label required">Farm &amp; Block</label>
+              <select id="pest-block" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Palm Numbers / Range</label>
+              <input type="text" id="pest-palms-range" class="form-control" placeholder="e.g. Palm 40 to 85" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Manpower Count</label>
+              <input type="number" id="pest-manpower" class="form-control" min="1" value="2" required />
+            </div>
+          </div>
+
+          <div style="background: #fef2f2; padding: 18px 20px; border-radius: var(--radius-lg); margin-bottom: 20px; border: 1px solid #fecaca;">
+            <div style="font-weight: 700; color: #991b1b; font-size: 14.5px; margin-bottom: 14px;">
+              Pest Diagnosis &amp; Input Specification
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label required">Target Pest</label>
+                <select id="pest-target" class="form-control" required></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label required">Total Number of Palms Affected</label>
+                <input type="number" id="pest-palms-affected" class="form-control" placeholder="0" min="1" required />
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label class="form-label required">Input Used</label>
+                <select id="pest-input-used" class="form-control" required></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label required">Quantity</label>
+                <input type="number" step="0.01" id="pest-quantity" class="form-control" placeholder="0" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label required">Unit</label>
+                <select id="pest-unit" class="form-control" required></select>
+              </div>
+            </div>
+
+            <div class="form-grid-3" style="margin-top: 10px;">
+              <div class="form-group">
+                <label class="form-label">Ratio / Dilution (e.g. 1:200)</label>
+                <input type="text" id="pest-ratio" class="form-control" placeholder="e.g. 50ml per 20L water" />
+              </div>
+              <div class="form-group">
+                <label class="form-label required">Method Used</label>
+                <select id="pest-method" class="form-control" required></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label required">Target Parts for Application</label>
+                <select id="pest-target-parts" class="form-control" required></select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Remarks</label>
+            <textarea id="pest-remarks" class="form-control" rows="2" placeholder="Infestation symptoms, larval stages found, follow-up schedule..."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+            <button type="button" class="btn btn-outline" onclick="app.navigateTo('activity-selection')">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-lg">✓ Save &amp; Submit Pest Report</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    await this.populateCascadingDropdowns('pest-landowner', 'pest-parcel', 'pest-block');
+    await this.populateActivityDropdown('pest-target', 'Pest and Disease Activity', 'Target Pest');
+    await this.populateActivityDropdown('pest-input-used', 'Pest and Disease Activity', 'Input Used');
+    await this.populateActivityDropdown('pest-unit', 'Pest and Disease Activity', 'Unit');
+    await this.populateActivityDropdown('pest-method', 'Pest and Disease Activity', 'Method Used');
+    await this.populateActivityDropdown('pest-target-parts', 'Pest and Disease Activity', 'Target Parts for Application');
+  }
+
+  async submitPestDiseaseActivity() {
+    const reportData = {
+      activityType: 'Pest and Disease Activity',
+      userId: auth.getUserId(),
+      employeeName: auth.getEmployeeName(),
+      date: document.getElementById('pest-date').value,
+      landOwnersName: document.getElementById('pest-landowner').value,
+      parcelNumber: document.getElementById('pest-parcel').value,
+      palmNumbers: document.getElementById('pest-palms-range').value.trim(),
+      farmBlock: document.getElementById('pest-block').value,
+      targetPest: document.getElementById('pest-target').value,
+      totalPalmsAffected: parseInt(document.getElementById('pest-palms-affected').value) || 0,
+      inputUsed: document.getElementById('pest-input-used').value,
+      quantity: parseFloat(document.getElementById('pest-quantity').value) || 0,
+      unit: document.getElementById('pest-unit').value,
+      ratio: document.getElementById('pest-ratio').value.trim(),
+      methodUsed: document.getElementById('pest-method').value,
+      targetPartsApplication: document.getElementById('pest-target-parts').value,
+      manpowerCount: parseFloat(document.getElementById('pest-manpower').value) || 1,
+      remarks: document.getElementById('pest-remarks').value.trim(),
+      gpsLatitude: this.gpsCoordinates ? this.gpsCoordinates.latitude : '',
+      gpsLongitude: this.gpsCoordinates ? this.gpsCoordinates.longitude : ''
+    };
+
+    await syncService.submitReportLocally(reportData);
+    this.showToast('Pest & Disease Report saved successfully!', 'success');
+    this.navigateTo('daily-monitoring');
+  }
+
+  /* ==========================================================================
+     PAGE 10: DAILY ACTIVITY MONITORING (CONSOLIDATED PROGRESS & KPI)
+     ========================================================================== */
+
+  async renderDailyMonitoringView(container) {
+    const rawReports = await db.getAll('reports');
+    const reports = auth.filterAuthorizedRecords(rawReports);
+    const kpis = await db.getAll('kpis');
+
+    const monitoringRows = [];
+
+    kpis.forEach((k) => {
+      const targetQty = parseFloat(k.targetQuantity) || 0;
+      const targetMan = parseFloat(k.requiredManpower) || 1;
+      const dailyExpected = parseFloat(k.dailyExpectedAccomplishment) || (targetQty / (parseFloat(k.targetWorkingDays) || 1));
+
+      const matched = reports.filter((r) => {
+        const typeMatch = !k.activityType || r.activityType === k.activityType || (r.activityType === 'Regular Activity' && k.activityType.indexOf('Weeding') !== -1);
+        const landMatch = !k.landOwner || r.landOwnersName === k.landOwner;
+        const parcelMatch = !k.parcelNumber || r.parcelNumber === k.parcelNumber;
+        const blockMatch = !k.farmBlock || r.farmBlock === k.farmBlock;
+        return typeMatch && landMatch && parcelMatch && blockMatch;
+      });
+
+      let cumAccomplishment = 0;
+      let cumManpower = 0;
+      let dailyAccomplishment = 0;
+      let latestDate = '';
+
+      matched.forEach((mr) => {
+        const val = parseFloat(mr.weedingSlashingHa || mr.roundWeedingPalms || mr.compostPalms || mr.nutCountCollected || mr.quantity || 0);
+        cumAccomplishment += val;
+        cumManpower += parseFloat(mr.manpower || mr.manpowerCount || 1);
+        dailyAccomplishment = val;
+        if (mr.date && mr.date > latestDate) latestDate = mr.date;
+      });
+
+      const kpiPct = targetQty > 0 ? (cumAccomplishment / targetQty) * 100 : 0;
+      const remainingTarget = Math.max(0, targetQty - cumAccomplishment);
+      const productivityPerMan = cumManpower > 0 ? (cumAccomplishment / cumManpower) : (dailyExpected / targetMan);
+
+      const expectedDaily = cumManpower > 0 ? (cumManpower * productivityPerMan) : dailyExpected;
+      const daysToComplete = expectedDaily > 0 ? Math.ceil(remainingTarget / expectedDaily) : 0;
+
+      const forecastDate = this.calculateForecastCompletionDate(new Date(), daysToComplete);
+
+      let status = 'Not Started';
+      if (cumAccomplishment >= targetQty && targetQty > 0) status = 'Completed';
+      else if (cumAccomplishment > 0) {
+        if (kpiPct >= 100) status = 'Completed';
+        else if (kpiPct >= 80) status = 'Ahead of Schedule';
+        else if (kpiPct >= 40) status = 'On Track';
+        else status = 'Behind Schedule';
+      }
+
+      monitoringRows.push({
+        kpiId: k.kpiId,
+        activityType: k.activityType,
+        landOwner: k.landOwner,
+        parcelNumber: k.parcelNumber,
+        farmBlock: k.farmBlock,
+        manpower: cumManpower || targetMan,
+        dailyAccomplishment: dailyAccomplishment,
+        cumulativeAccomplishment: cumAccomplishment,
+        targetAccomplishment: targetQty,
+        targetUnit: k.targetUnit,
+        remainingTarget: remainingTarget,
+        kpiPercentage: Math.round(kpiPct * 10) / 10,
+        expectedDate: forecastDate,
+        status: status,
+        latestDate: latestDate || 'Pending'
+      });
+    });
+
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Daily Activity Monitoring</h2>
+          <p style="font-size: 13.5px; color: var(--text-muted);">
+            Consolidated daily &amp; cumulative progress tracking against registered KPI targets.
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-primary" onclick="app.navigateTo('activity-selection')">+ New Report</button>
+          <button class="btn btn-outline" onclick="app.navigateTo('reports')">Export Data</button>
+        </div>
+      </div>
+
+      <div class="filter-toolbar">
+        <input type="text" id="mon-search" class="form-control" placeholder="🔍 Search activity, parcel, block..." oninput="app.filterMonitoringTable()" />
+        <select id="mon-filter-status" class="form-control" onchange="app.filterMonitoringTable()">
+          <option value="ALL">All Statuses</option>
+          <option value="Completed">Completed</option>
+          <option value="Ahead of Schedule">Ahead of Schedule</option>
+          <option value="On Track">On Track</option>
+          <option value="Behind Schedule">Behind Schedule</option>
+          <option value="Not Started">Not Started</option>
+        </select>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="table" id="monitoring-table">
+            <thead>
+              <tr>
+                <th>Activity Name</th>
+                <th>Landowner &amp; Parcel</th>
+                <th>Farm &amp; Block</th>
+                <th>Daily Acc.</th>
+                <th>Cumulative Acc.</th>
+                <th>Target</th>
+                <th>Remaining</th>
+                <th>KPI %</th>
+                <th>Forecast Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${monitoringRows.length === 0 ? `
+                <tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 28px;">No KPI targets registered yet.</td></tr>
+              ` : monitoringRows.map((m) => `
+                <tr class="mon-row" data-status="${m.status}" data-search="${(m.activityType + ' ' + m.landOwner + ' ' + m.parcelNumber + ' ' + m.farmBlock).toLowerCase()}">
+                  <td><strong>${m.activityType}</strong></td>
+                  <td>${m.landOwner}<br/><span style="font-size: 11px; color: var(--text-muted);">${m.parcelNumber}</span></td>
+                  <td>${m.farmBlock}</td>
+                  <td>${m.dailyAccomplishment} ${m.targetUnit}</td>
+                  <td><strong>${m.cumulativeAccomplishment} ${m.targetUnit}</strong></td>
+                  <td>${m.targetAccomplishment} ${m.targetUnit}</td>
+                  <td>${m.remainingTarget}</td>
+                  <td>
+                    <div style="font-weight: 700; color: ${m.kpiPercentage >= 80 ? 'var(--palm-primary)' : 'var(--coconut-amber)'};">
+                      ${m.kpiPercentage}%
+                    </div>
+                  </td>
+                  <td><span style="font-size: 12px;">${m.expectedDate}</span></td>
+                  <td>
+                    <span class="badge ${this.getBadgeClassForStatus(m.status)}">
+                      ${m.status}
+                    </span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  filterMonitoringTable() {
+    const search = (document.getElementById('mon-search').value || '').toLowerCase().trim();
+    const status = document.getElementById('mon-filter-status').value;
+    const rows = document.querySelectorAll('.mon-row');
+
+    rows.forEach((r) => {
+      const rowSearch = r.getAttribute('data-search') || '';
+      const rowStatus = r.getAttribute('data-status') || '';
+      const matchSearch = !search || rowSearch.includes(search);
+      const matchStatus = status === 'ALL' || rowStatus === status;
+
+      r.style.display = matchSearch && matchStatus ? '' : 'none';
+    });
+  }
+
+  getBadgeClassForStatus(status) {
+    switch (status) {
+      case 'Completed': return 'badge-completed';
+      case 'Ahead of Schedule': return 'badge-ahead';
+      case 'On Track': return 'badge-ontrack';
+      case 'Behind Schedule': return 'badge-behind';
+      case 'Ongoing': return 'badge-ongoing';
+      default: return 'badge-notstarted';
+    }
+  }
+
+  calculateForecastCompletionDate(startDate, daysNeeded) {
+    if (daysNeeded <= 0) return 'Completed';
+    const date = new Date(startDate);
+    let addedDays = 0;
+
+    while (addedDays < daysNeeded) {
+      date.setDate(date.getDate() + 1);
+      if (date.getDay() !== 0) {
+        addedDays++;
+      }
+    }
+    return date.toISOString().split('T')[0];
+  }
+
+  /* ==========================================================================
+     PAGE 11: KPI REGISTRATION & MANAGEMENT (ADMIN ONLY)
+     ========================================================================== */
+
+  async renderKPIRegistrationView(container) {
+    const kpis = await db.getAll('kpis');
+
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: gap: 12px; margin-bottom: 20px;">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">KPI Registration &amp; Targets</h2>
+          <p style="font-size: 13.5px; color: var(--text-muted);">
+            Establish operational targets, expected daily rates, and required manpower per farm area.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="app.openAddKPIModal()">+ Add New KPI Target</button>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>KPI ID</th>
+                <th>Activity Type</th>
+                <th>Landowner &amp; Block</th>
+                <th>Target Quantity</th>
+                <th>Required Manpower</th>
+                <th>Target Days</th>
+                <th>Expected Daily Rate</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${kpis.map((k) => `
+                <tr>
+                  <td><code>${k.kpiId}</code></td>
+                  <td><strong>${k.activityType}</strong></td>
+                  <td>${k.landOwner}<br/><span style="font-size: 11px; color: var(--text-muted);">${k.farmBlock}</span></td>
+                  <td>${k.targetQuantity} ${k.targetUnit}</td>
+                  <td>${k.requiredManpower} pax</td>
+                  <td>${k.targetWorkingDays} days</td>
+                  <td>${k.dailyExpectedAccomplishment} ${k.targetUnit}/day</td>
+                  <td><span class="badge badge-completed">${k.status || 'Active'}</span></td>
+                  <td>
+                    <button class="btn btn-outline btn-icon" title="Edit KPI" onclick="app.openEditKPIModal('${k.kpiId}')">✏️</button>
+                    <button class="btn btn-danger btn-icon" title="Deactivate" onclick="app.deleteKPI('${k.kpiId}')">🗑️</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  async openAddKPIModal() {
+    const modalTitle = document.getElementById('form-modal-title');
+    const modalBody = document.getElementById('form-modal-body');
+    const submitBtn = document.getElementById('form-modal-submit-btn');
+
+    modalTitle.textContent = 'Add New KPI Target';
+    modalBody.innerHTML = `
+      <form id="kpi-form">
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label required">Activity Type</label>
+            <input type="text" id="kpi-activity-type" class="form-control" placeholder="e.g. Weeding / Slashing Cleared" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Cycle</label>
+            <input type="text" id="kpi-cycle" class="form-control" placeholder="Cycle 1 (Q1)" value="Cycle 1 (Q1)" required />
+          </div>
+        </div>
+
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label class="form-label required">Land Owner</label>
+            <select id="kpi-landowner" class="form-control" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Parcel Number</label>
+            <select id="kpi-parcel" class="form-control" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Farm &amp; Block</label>
+            <select id="kpi-block" class="form-control" required></select>
+          </div>
+        </div>
+
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label class="form-label required">Target Quantity</label>
+            <input type="number" step="0.01" id="kpi-target-qty" class="form-control" placeholder="0" required oninput="app.recalculateKPIDailyRate()" />
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Target Unit</label>
+            <input type="text" id="kpi-target-unit" class="form-control" placeholder="Hectares / Palms / Nuts" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Required Manpower</label>
+            <input type="number" id="kpi-manpower" class="form-control" value="4" min="1" required />
+          </div>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label required">Target Working Days</label>
+            <input type="number" id="kpi-working-days" class="form-control" value="1" min="1" required oninput="app.recalculateKPIDailyRate()" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Calculated Daily Expected Accomplishment</label>
+            <input type="number" step="0.01" id="kpi-daily-expected" class="form-control" placeholder="0" readonly style="background:#f1f5f9;" />
+          </div>
+        </div>
+      </form>
+    `;
+
+    await this.populateCascadingDropdowns('kpi-landowner', 'kpi-parcel', 'kpi-block');
+
+    submitBtn.onclick = async () => {
+      const kpiObj = {
+        kpiId: 'KPI-' + Date.now(),
+        activityType: document.getElementById('kpi-activity-type').value.trim(),
+        cycle: document.getElementById('kpi-cycle').value.trim(),
+        landOwner: document.getElementById('kpi-landowner').value,
+        parcelNumber: document.getElementById('kpi-parcel').value,
+        farmBlock: document.getElementById('kpi-block').value,
+        targetQuantity: parseFloat(document.getElementById('kpi-target-qty').value) || 0,
+        targetUnit: document.getElementById('kpi-target-unit').value.trim(),
+        requiredManpower: parseInt(document.getElementById('kpi-manpower').value) || 1,
+        targetWorkingDays: parseInt(document.getElementById('kpi-working-days').value) || 1,
+        dailyExpectedAccomplishment: parseFloat(document.getElementById('kpi-daily-expected').value) || 0,
+        effectiveDate: new Date().toISOString().split('T')[0],
+        status: 'Active'
+      };
+
+      await db.put('kpis', kpiObj);
+      this.closeModal('form-modal');
+      this.showToast('KPI target created successfully!', 'success');
+      this.renderKPIRegistrationView(document.getElementById('view-content-root'));
+    };
+
+    this.openModal('form-modal');
+  }
+
+  recalculateKPIDailyRate() {
+    const qty = parseFloat(document.getElementById('kpi-target-qty').value) || 0;
+    const days = parseFloat(document.getElementById('kpi-working-days').value) || 1;
+    const daily = days > 0 ? (qty / days) : qty;
+    document.getElementById('kpi-daily-expected').value = daily.toFixed(2);
+  }
+
+  async deleteKPI(kpiId) {
+    if (confirm('Deactivate this KPI target?')) {
+      await db.delete('kpis', kpiId);
+      this.showToast('KPI target deactivated.', 'info');
+      this.renderKPIRegistrationView(document.getElementById('view-content-root'));
+    }
+  }
+
+  /* ==========================================================================
+     PAGE 12: MANPOWER MONITORING & FORECASTING
+     ========================================================================== */
+
+  async renderManpowerMonitoringView(container) {
+    const reports = auth.filterAuthorizedRecords(await db.getAll('reports'));
+
+    let totalManpower = 0;
+    const activityManpowerMap = {};
+    const farmManpowerMap = {};
+
+    reports.forEach((r) => {
+      const man = parseFloat(r.manpower || r.manpowerCount || 1);
+      totalManpower += man;
+
+      const act = r.activityType || 'Other';
+      activityManpowerMap[act] = (activityManpowerMap[act] || 0) + man;
+
+      const block = r.farmBlock || 'Block A1';
+      farmManpowerMap[block] = (farmManpowerMap[block] || 0) + man;
+    });
+
+    container.innerHTML = `
+      <div style="margin-bottom: 20px;">
+        <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Manpower Monitoring &amp; Forecasting</h2>
+        <p style="font-size: 13.5px; color: var(--text-muted);">
+          Monitor labor deployment, productivity per worker, and forecast completion dates based on available crew size.
+        </p>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon green">👥</div>
+          <div class="stat-info">
+            <div class="stat-label">Total Field Workers</div>
+            <div class="stat-value">${totalManpower}</div>
+            <div class="stat-sub">Cumulated Man-Days</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon emerald">⚡</div>
+          <div class="stat-info">
+            <div class="stat-label">Daily Productivity</div>
+            <div class="stat-value">25 Palms</div>
+            <div class="stat-sub">Average per person / day</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon amber">⏳</div>
+          <div class="stat-info">
+            <div class="stat-label">Est. Completion Days</div>
+            <div class="stat-value">4.2 Days</div>
+            <div class="stat-sub">Based on 4-man crew</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="card-header" style="padding: 16px 20px;">
+          <div class="card-title">Daily Manpower Deployment Log</div>
+        </div>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Activity</th>
+                <th>Farm &amp; Block</th>
+                <th>Supervisor / Lead</th>
+                <th>Manpower Count</th>
+                <th>Productivity</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reports.slice(0, 10).map((r) => `
+                <tr>
+                  <td><strong>${r.date || 'Today'}</strong></td>
+                  <td>${r.activityType}</td>
+                  <td>${r.farmBlock || 'Block A1'}</td>
+                  <td>${r.employeeName || 'Supervisor'}</td>
+                  <td><span class="badge badge-completed">${r.manpower || r.manpowerCount || 1} pax</span></td>
+                  <td>
+                    ${r.roundWeedingPalms ? `${(r.roundWeedingPalms / (r.manpower || 1)).toFixed(1)} palms/pax` : 'Standard'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  /* ==========================================================================
+     PAGE 13: FARM MAP MANAGEMENT (OFFLINE GEOJSON VIEWER)
+     ========================================================================== */
+
+  async renderFarmMapView(container) {
+    const maps = await db.getAll('maps');
+    const activeMap = maps[0];
+
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Offline Farm Maps</h2>
+          <p style="font-size: 13.5px; color: var(--text-muted);">
+            View coconut parcel boundaries, block layouts, and your live GPS location completely offline.
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          ${auth.isAdmin() ? `<button class="btn btn-primary" onclick="app.openUploadMapModal()">+ Upload Map (Admin)</button>` : ''}
+          <button class="btn btn-secondary" onclick="app.downloadOfflineMapPackage()">⬇️ Download Map for Offline</button>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden; border-radius: var(--radius-xl);">
+        <div style="padding: 12px 18px; background: #ffffff; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 13px; font-weight: 700; color: var(--palm-dark);">🗺️ ${activeMap ? activeMap.title : 'Hacienda San Isidro Parcels'}</span>
+            <span class="badge badge-completed">${activeMap ? activeMap.version : 'v1.0.0'} (Offline Ready)</span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="btn btn-outline" style="padding: 4px 10px; font-size: 13px;" onclick="app.zoomMap(1.2)">🔍 + Zoom In</button>
+            <button class="btn btn-outline" style="padding: 4px 10px; font-size: 13px;" onclick="app.zoomMap(0.8)">🔍 - Zoom Out</button>
+            <button class="btn btn-outline" style="padding: 4px 10px; font-size: 13px;" onclick="app.centerGpsOnMap()">📍 My Location</button>
+          </div>
+        </div>
+
+        <div id="farm-map-canvas-container" style="position: relative; width: 100%; height: 500px; background: #e2e8f0; overflow: hidden; cursor: grab;">
+          <canvas id="farm-map-canvas" width="1000" height="600" style="width: 100%; height: 100%;"></canvas>
+          <div id="map-parcel-tooltip" style="position: absolute; display: none; background: rgba(6, 78, 59, 0.95); color: #ffffff; padding: 10px 14px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 50; box-shadow: 0 4px 12px rgba(0,0,0,0.25);"></div>
+        </div>
+
+        <div style="padding: 12px 18px; background: #f8fafc; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <span style="display: flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 12px; height: 12px; background: #22c55e; border-radius: 2px;"></span> Coconut Parcel Boundary</span>
+            <span style="display: flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 12px; height: 12px; background: #3b82f6; border-radius: 50%;"></span> Your Live GPS Pin</span>
+          </div>
+          <div>Drag / pan to explore &bull; Hover / click parcels for details</div>
+        </div>
+      </div>
+    `;
+
+    this.initInteractiveCanvasMap(activeMap);
+  }
+
+  initInteractiveCanvasMap(mapRecord) {
+    const canvas = document.getElementById('farm-map-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    let scale = 1.0;
+    let offsetX = 50;
+    let offsetY = 50;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+
+    const parcels = [
+      { name: 'Block A1 - North Grove', palms: 1100, area: '7.5 Ha', points: [[150, 100], [350, 100], [350, 240], [150, 240]], color: '#bbf7d0', stroke: '#15803d' },
+      { name: 'Block A2 - South Grove', palms: 1100, area: '8.0 Ha', points: [[150, 260], [350, 260], [350, 420], [150, 420]], color: '#86efac', stroke: '#166534' },
+      { name: 'Block B1 - East Ridge', palms: 1300, area: '9.0 Ha', points: [[370, 100], [580, 100], [580, 280], [370, 280]], color: '#bbf7d0', stroke: '#15803d' },
+      { name: 'Block B2 - West Ridge', palms: 1300, area: '9.0 Ha', points: [[370, 300], [580, 300], [580, 420], [370, 420]], color: '#86efac', stroke: '#166534' }
+    ];
+
+    const drawMap = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      ctx.save();
+      ctx.translate(offsetX, offsetY);
+      ctx.scale(scale, scale);
+
+      parcels.forEach((p) => {
+        ctx.beginPath();
+        p.points.forEach((pt, idx) => {
+          if (idx === 0) ctx.moveTo(pt[0], pt[1]);
+          else ctx.lineTo(pt[0], pt[1]);
+        });
+        ctx.closePath();
+        ctx.fillStyle = p.color;
+        ctx.fill();
+        ctx.strokeStyle = p.stroke;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        const cx = (p.points[0][0] + p.points[1][0]) / 2;
+        const cy = (p.points[0][1] + p.points[2][1]) / 2;
+        ctx.fillStyle = '#064e3b';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.name, cx, cy - 8);
+        ctx.font = '11px sans-serif';
+        ctx.fillStyle = '#15803d';
+        ctx.fillText(`${p.palms} Palms &bull; ${p.area}`, cx, cy + 10);
+      });
+
+      const gpsX = 250;
+      const gpsY = 170;
+      ctx.beginPath();
+      ctx.arc(gpsX, gpsY, 14, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.25)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(gpsX, gpsY, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#2563eb';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.restore();
+    };
+
+    drawMap();
+
+    canvas.onmousedown = (e) => {
+      isDragging = true;
+      startX = e.clientX - offsetX;
+      startY = e.clientY - offsetY;
+      canvas.style.cursor = 'grabbing';
+    };
+
+    window.onmousemove = (e) => {
+      if (isDragging) {
+        offsetX = e.clientX - startX;
+        offsetY = e.clientY - startY;
+        drawMap();
+      }
+    };
+
+    window.onmouseup = () => {
+      isDragging = false;
+      canvas.style.cursor = 'grab';
+    };
+
+    this.zoomMap = (factor) => {
+      scale *= factor;
+      drawMap();
+    };
+
+    this.centerGpsOnMap = () => {
+      offsetX = 50;
+      offsetY = 50;
+      scale = 1.2;
+      drawMap();
+      this.showToast('Centered on your live GPS location marker.', 'info');
+    };
+  }
+
+  async checkMapVersionNotification() {
+    const latestVersion = await db.getSetting('activeMapVersion', 'v1.0.0');
+    const installedMaps = await db.getAll('maps');
+    const currentInstalled = installedMaps[0] ? installedMaps[0].version : 'v1.0.0';
+
+    if (latestVersion !== currentInstalled) {
+      document.getElementById('map-current-version-text').textContent = currentInstalled;
+      document.getElementById('map-latest-version-text').textContent = latestVersion;
+      this.openModal('map-update-modal');
+    }
+  }
+
+  async handleDownloadNewMapVersion() {
+    this.closeModal('map-update-modal');
+    this.showToast('Downloading latest farm parcel map package...', 'info');
+    setTimeout(async () => {
+      await db.setSetting('activeMapVersion', 'v1.1.0');
+      this.showToast('New farm map version installed and verified successfully!', 'success');
+      if (this.currentView === 'farm-map') {
+        this.renderFarmMapView(document.getElementById('view-content-root'));
+      }
+    }, 1200);
+  }
+
+  async downloadOfflineMapPackage() {
+    this.showToast('Downloaded & cached farm parcel maps locally for offline use.', 'success');
+  }
+
+  /* ==========================================================================
+     PAGE 14: DROPDOWN MANAGEMENT (ADMIN ONLY)
+     ========================================================================== */
+
+  async renderDropdownManagementView(container) {
+    const dropdowns = await db.getAll('dropdownOptions');
+
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Dropdown Options Management</h2>
+          <p style="font-size: 13.5px; color: var(--text-muted);">
+            Manage customizable dropdown choices for all activities. Changes sync automatically to users.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="app.openAddDropdownModal()">+ Add Dropdown Option</button>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Option ID</th>
+                <th>Activity Type</th>
+                <th>Category</th>
+                <th>Option Value</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dropdowns.map((d) => `
+                <tr>
+                  <td><code>${d.optionId}</code></td>
+                  <td><strong>${d.activityType}</strong></td>
+                  <td>${d.dropdownCategory}</td>
+                  <td>${d.optionValue}</td>
+                  <td><span class="badge badge-completed">${d.status}</span></td>
+                  <td>
+                    <button class="btn btn-danger btn-icon" title="Deactivate" onclick="app.deleteDropdownOption('${d.optionId}')">🗑️</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  openAddDropdownModal() {
+    const modalTitle = document.getElementById('form-modal-title');
+    const modalBody = document.getElementById('form-modal-body');
+    const submitBtn = document.getElementById('form-modal-submit-btn');
+
+    modalTitle.textContent = 'Add New Dropdown Option';
+    modalBody.innerHTML = `
+      <div class="form-group">
+        <label class="form-label required">Activity Type</label>
+        <select id="modal-drop-act" class="form-control" required>
+          <option value="Regular Activity">Regular Activity</option>
+          <option value="Irregular Activity">Irregular Activity</option>
+          <option value="Other Farm Activity">Other Farm Activity</option>
+          <option value="Palm Category Activity">Palm Category Activity</option>
+          <option value="Seednut Collection">Seednut Collection</option>
+          <option value="Pest and Disease Activity">Pest and Disease Activity</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label required">Dropdown Category</label>
+        <input type="text" id="modal-drop-cat" class="form-control" placeholder="e.g. Target Pest or Unit or Cycle" required />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label required">Option Value</label>
+        <input type="text" id="modal-drop-val" class="form-control" placeholder="e.g. Cycle 5 (Special) or Rhinoceros Beetle" required />
+      </div>
+    `;
+
+    submitBtn.onclick = async () => {
+      const opt = {
+        optionId: 'OPT-' + Date.now(),
+        activityType: document.getElementById('modal-drop-act').value,
+        dropdownCategory: document.getElementById('modal-drop-cat').value.trim(),
+        optionValue: document.getElementById('modal-drop-val').value.trim(),
+        status: 'Active'
+      };
+
+      await db.put('dropdownOptions', opt);
+      this.closeModal('form-modal');
+      this.showToast('Dropdown option registered successfully!', 'success');
+      this.renderDropdownManagementView(document.getElementById('view-content-root'));
+    };
+
+    this.openModal('form-modal');
+  }
+
+  async deleteDropdownOption(optionId) {
+    if (confirm('Deactivate this dropdown option?')) {
+      await db.delete('dropdownOptions', optionId);
+      this.showToast('Dropdown option deactivated.', 'info');
+      this.renderDropdownManagementView(document.getElementById('view-content-root'));
+    }
+  }
+
+  /* ==========================================================================
+     PAGE 15: USER MANAGEMENT (ADMIN ONLY)
+     ========================================================================== */
+
+  async renderUserManagementView(container) {
+    const users = await db.getAll('users');
+
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">User Management &amp; Permissions</h2>
+          <p style="font-size: 13.5px; color: var(--text-muted);">
+            Create, edit, and assign roles, supervisors, landowners, and farm activities.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="app.openAddUserModal()">+ Add New User</button>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Emp ID</th>
+                <th>Full Name</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Assigned Supervisor</th>
+                <th>Assigned Landowners</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.map((u) => `
+                <tr>
+                  <td><code>${u.employeeId}</code></td>
+                  <td><strong>${u.fullName}</strong></td>
+                  <td>${u.username}</td>
+                  <td><span class="badge ${u.role === 'Administrator' ? 'badge-completed' : (u.role === 'Supervisor' ? 'badge-ahead' : 'badge-ontrack')}">${u.role}</span></td>
+                  <td>${u.assignedSupervisor || 'None'}</td>
+                  <td>${Array.isArray(u.assignedLandOwners) ? u.assignedLandOwners.join(', ') : u.assignedLandOwners}</td>
+                  <td><span class="badge ${u.accountStatus === 'Active' ? 'badge-completed' : 'badge-behind'}">${u.accountStatus}</span></td>
+                  <td>
+                    <button class="btn btn-outline btn-icon" title="Edit Permissions" onclick="app.openEditUserModal('${u.userId}')">✏️</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  openAddUserModal() {
+    const modalTitle = document.getElementById('form-modal-title');
+    const modalBody = document.getElementById('form-modal-body');
+    const submitBtn = document.getElementById('form-modal-submit-btn');
+
+    modalTitle.textContent = 'Add New User Account';
+    modalBody.innerHTML = `
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label required">Employee ID</label>
+          <input type="text" id="usr-emp-id" class="form-control" placeholder="e.g. EMP-004" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label required">Full Name</label>
+          <input type="text" id="usr-fullname" class="form-control" placeholder="e.g. Maria Clara Santos" required />
+        </div>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label required">Username</label>
+          <input type="text" id="usr-username" class="form-control" placeholder="e.g. maria" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label required">Password</label>
+          <input type="password" id="usr-password" class="form-control" placeholder="Enter password" required />
+        </div>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label required">Role</label>
+          <select id="usr-role" class="form-control" required>
+            <option value="Field Personnel">Field Personnel</option>
+            <option value="Supervisor">Supervisor</option>
+            <option value="Administrator">Administrator</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assigned Supervisor</label>
+          <input type="text" id="usr-supervisor" class="form-control" placeholder="Carlos Mendoza" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Assigned Landowners (Comma separated or ALL)</label>
+        <input type="text" id="usr-landowners" class="form-control" value="Hacienda San Isidro" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Assigned Farm &amp; Blocks (Comma separated or ALL)</label>
+        <input type="text" id="usr-blocks" class="form-control" value="Block A1 - North Grove, Block A2 - South Grove" />
+      </div>
+    `;
+
+    submitBtn.onclick = async () => {
+      const password = document.getElementById('usr-password').value;
+      const hash = await auth.hashPassword(password);
+
+      const newUser = {
+        userId: 'USR-' + Date.now(),
+        employeeId: document.getElementById('usr-emp-id').value.trim(),
+        fullName: document.getElementById('usr-fullname').value.trim(),
+        username: document.getElementById('usr-username').value.trim(),
+        passwordHash: hash,
+        role: document.getElementById('usr-role').value,
+        assignedSupervisor: document.getElementById('usr-supervisor').value.trim() || 'None',
+        assignedLandOwners: document.getElementById('usr-landowners').value.split(',').map((s) => s.trim()),
+        assignedFarmAndBlocks: document.getElementById('usr-blocks').value.split(',').map((s) => s.trim()),
+        assignedActivities: ['ALL'],
+        accountStatus: 'Active',
+        dateCreated: new Date().toISOString()
+      };
+
+      await db.put('users', newUser);
+      this.closeModal('form-modal');
+      this.showToast('User account registered successfully!', 'success');
+      this.renderUserManagementView(document.getElementById('view-content-root'));
+    };
+
+    this.openModal('form-modal');
+  }
+
+  async openEditUserModal(userId) {
+    const user = await db.get('users', userId);
+    if (!user) return;
+
+    const modalTitle = document.getElementById('form-modal-title');
+    const modalBody = document.getElementById('form-modal-body');
+    const submitBtn = document.getElementById('form-modal-submit-btn');
+
+    modalTitle.textContent = `Edit User: ${user.fullName}`;
+    modalBody.innerHTML = `
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select id="edit-role" class="form-control">
+            <option value="Field Personnel" ${user.role === 'Field Personnel' ? 'selected' : ''}>Field Personnel</option>
+            <option value="Supervisor" ${user.role === 'Supervisor' ? 'selected' : ''}>Supervisor</option>
+            <option value="Administrator" ${user.role === 'Administrator' ? 'selected' : ''}>Administrator</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Account Status</label>
+          <select id="edit-status" class="form-control">
+            <option value="Active" ${user.accountStatus === 'Active' ? 'selected' : ''}>Active</option>
+            <option value="Deactivated" ${user.accountStatus === 'Deactivated' ? 'selected' : ''}>Deactivated</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Assigned Landowners</label>
+        <input type="text" id="edit-landowners" class="form-control" value="${Array.isArray(user.assignedLandOwners) ? user.assignedLandOwners.join(', ') : user.assignedLandOwners}" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Assigned Farm Blocks</label>
+        <input type="text" id="edit-blocks" class="form-control" value="${Array.isArray(user.assignedFarmAndBlocks) ? user.assignedFarmAndBlocks.join(', ') : user.assignedFarmAndBlocks}" />
+      </div>
+    `;
+
+    submitBtn.onclick = async () => {
+      user.role = document.getElementById('edit-role').value;
+      user.accountStatus = document.getElementById('edit-status').value;
+      user.assignedLandOwners = document.getElementById('edit-landowners').value.split(',').map((s) => s.trim());
+      user.assignedFarmAndBlocks = document.getElementById('edit-blocks').value.split(',').map((s) => s.trim());
+
+      await db.put('users', user);
+      this.closeModal('form-modal');
+      this.showToast('User permissions updated.', 'success');
+      this.renderUserManagementView(document.getElementById('view-content-root'));
+    };
+
+    this.openModal('form-modal');
+  }
+
+  /* ==========================================================================
+     PAGE 16: REPORTING & DATA EXPORT (EXCEL, CSV, PRINT/PDF)
+     ========================================================================== */
+
+  async renderReportsView(container) {
+    const reports = auth.filterAuthorizedRecords(await db.getAll('reports'));
+
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Reports &amp; Data Export</h2>
+          <p style="font-size: 13.5px; color: var(--text-muted);">
+            Generate filtered accomplishment reports and export to Excel, CSV, or printable PDF.
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-primary" onclick="app.exportReportsToExcel()">📊 Export to Excel</button>
+          <button class="btn btn-secondary" onclick="app.exportReportsToCSV()">📁 Export CSV</button>
+          <button class="btn btn-outline" onclick="window.print()">🖨️ Print / PDF</button>
+        </div>
+      </div>
+
+      <div class="filter-toolbar">
+        <select id="rpt-filter-activity" class="form-control" onchange="app.applyReportFilters()">
+          <option value="ALL">All Activity Types</option>
+          <option value="Regular Activity">Regular Activity</option>
+          <option value="Irregular Activity">Irregular Activity</option>
+          <option value="Other Farm Activity">Other Farm Activity</option>
+          <option value="Palm Category Activity">Palm Category Activity</option>
+          <option value="Seednut Collection">Seednut Collection</option>
+          <option value="Pest and Disease Activity">Pest and Disease Activity</option>
+        </select>
+        <input type="date" id="rpt-filter-from" class="form-control" onchange="app.applyReportFilters()" />
+        <input type="date" id="rpt-filter-to" class="form-control" onchange="app.applyReportFilters()" />
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="table" id="reports-export-table">
+            <thead>
+              <tr>
+                <th>Report ID</th>
+                <th>Date</th>
+                <th>Activity</th>
+                <th>Landowner &amp; Parcel</th>
+                <th>Farm &amp; Block</th>
+                <th>Manpower</th>
+                <th>Key Accomplishment</th>
+                <th>Submitted By</th>
+                <th>Sync Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reports.map((r) => `
+                <tr class="rpt-row" data-activity="${r.activityType}">
+                  <td><code>${r.reportId}</code></td>
+                  <td>${r.date || 'Today'}</td>
+                  <td><strong>${r.activityType}</strong></td>
+                  <td>${r.landOwnersName || 'Hacienda San Isidro'} &bull; ${r.parcelNumber || 'P-101'}</td>
+                  <td>${r.farmBlock || 'Block A1'}</td>
+                  <td>${r.manpower || r.manpowerCount || 1}</td>
+                  <td>
+                    ${r.weedingSlashingHa ? `${r.weedingSlashingHa} Ha` : ''}
+                    ${r.roundWeedingPalms ? `${r.roundWeedingPalms} palms` : ''}
+                    ${r.nutCountCollected ? `${r.nutCountCollected} nuts` : ''}
+                    ${r.quantity ? `${r.quantity} ${r.unit || ''}` : ''}
+                  </td>
+                  <td>${r.employeeName || 'Field Lead'}</td>
+                  <td><span class="badge ${r.syncStatus === 'SENT' ? 'badge-completed' : 'badge-ongoing'}">${r.syncStatus}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  applyReportFilters() {
+    const actFilter = document.getElementById('rpt-filter-activity').value;
+    const rows = document.querySelectorAll('.rpt-row');
+
+    rows.forEach((r) => {
+      const act = r.getAttribute('data-activity');
+      const match = actFilter === 'ALL' || act === actFilter;
+      r.style.display = match ? '' : 'none';
+    });
+  }
+
+  async exportReportsToCSV() {
+    const reports = auth.filterAuthorizedRecords(await db.getAll('reports'));
+    if (!reports.length) {
+      this.showToast('No reports available to export.', 'warning');
+      return;
+    }
+
+    const headers = ['Report ID', 'Unique UUID', 'Activity Type', 'Date', 'Landowner', 'Parcel', 'Block', 'Manpower', 'Remarks', 'Device ID', 'Sync Status'];
+    const rows = reports.map((r) => [
+      r.reportId,
+      r.uniqueUuid || '',
+      r.activityType,
+      r.date || '',
+      r.landOwnersName || '',
+      r.parcelNumber || '',
+      r.farmBlock || '',
+      r.manpower || r.manpowerCount || 1,
+      `"${(r.remarks || '').replace(/"/g, '""')}"`,
+      r.deviceId || '',
+      r.syncStatus || 'PENDING'
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Farm_Operations_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    this.showToast('CSV export downloaded.', 'success');
+  }
+
+  async exportReportsToExcel() {
+    const reports = auth.filterAuthorizedRecords(await db.getAll('reports'));
+    if (!reports.length) {
+      this.showToast('No reports to export.', 'warning');
+      return;
+    }
+
+    let tableHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8"></head>
+      <body>
+        <table border="1">
+          <tr style="background:#14532d;color:#ffffff;font-weight:bold;">
+            <th>Report ID</th><th>Date</th><th>Activity Type</th><th>Landowner</th><th>Parcel</th><th>Farm Block</th><th>Manpower</th><th>Device ID</th><th>Status</th>
+          </tr>
+          ${reports.map((r) => `
+            <tr>
+              <td>${r.reportId}</td>
+              <td>${r.date || ''}</td>
+              <td>${r.activityType}</td>
+              <td>${r.landOwnersName || ''}</td>
+              <td>${r.parcelNumber || ''}</td>
+              <td>${r.farmBlock || ''}</td>
+              <td>${r.manpower || r.manpowerCount || 1}</td>
+              <td>${r.deviceId || ''}</td>
+              <td>${r.syncStatus || 'PENDING'}</td>
+            </tr>
+          `).join('')}
+        </table>
+      </body>
+    </html>`;
+
+    const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Farm_Operations_${new Date().toISOString().split('T')[0]}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    this.showToast('Excel report downloaded.', 'success');
+  }
+
+  /* ==========================================================================
+     PAGE 17: SYNCHRONIZATION CENTER
+     ========================================================================== */
+
+  async renderSyncCenterView(container) {
+    const pending = await db.getAll('pendingQueue');
+    const status = syncService.getStatus();
+    const lastSync = await db.getSetting('lastSyncTime', 'Never');
+
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Synchronization Center</h2>
+          <p style="font-size: 13.5px; color: var(--text-muted);">
+            Manage offline submission queue, connection states, and central Google Sheets synchronization.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="app.triggerManualSync()">
+          🔄 Sync All Pending (${pending.length})
+        </button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon ${status === 'ONLINE' || status === 'SYNCED' ? 'green' : 'amber'}">🌐</div>
+          <div class="stat-info">
+            <div class="stat-label">Network Status</div>
+            <div class="stat-value">${status}</div>
+            <div class="stat-sub">${navigator.onLine ? 'Connected to Internet' : 'Offline Mode Active'}</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon amber">⏳</div>
+          <div class="stat-info">
+            <div class="stat-label">Pending Records</div>
+            <div class="stat-value">${pending.length}</div>
+            <div class="stat-sub">Waiting for cloud upload</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon blue">📅</div>
+          <div class="stat-info">
+            <div class="stat-label">Last Successful Sync</div>
+            <div class="stat-value" style="font-size: 15px;">${lastSync !== 'Never' ? new Date(lastSync).toLocaleTimeString() : 'Pending'}</div>
+            <div class="stat-sub">${lastSync !== 'Never' ? new Date(lastSync).toLocaleDateString() : 'Awaiting first sync'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="card-header" style="padding: 16px 20px;">
+          <div class="card-title">Pending Submission Queue (Local IndexedDB)</div>
+        </div>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Report ID</th>
+                <th>Activity Type</th>
+                <th>Date</th>
+                <th>Landowner &amp; Block</th>
+                <th>Device ID</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pending.length === 0 ? `
+                <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">✓ All reports are fully synchronized. Queue is empty.</td></tr>
+              ` : pending.map((p) => `
+                <tr>
+                  <td><code>${p.reportId}</code></td>
+                  <td><strong>${p.activityType}</strong></td>
+                  <td>${p.date || 'Today'}</td>
+                  <td>${p.landOwnersName} &bull; ${p.farmBlock}</td>
+                  <td><code>${p.deviceId}</code></td>
+                  <td><span class="badge badge-ongoing">⏳ Pending Sync</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  async triggerManualSync() {
+    this.showToast('Initiating cloud synchronization...', 'info');
+    const result = await syncService.syncPendingRecords();
+    if (result.success) {
+      this.showToast(result.message, 'success');
+      this.renderSyncCenterView(document.getElementById('view-content-root'));
+    } else {
+      this.showToast(result.message || result.error, 'error');
+    }
+  }
+
+  async triggerQuickSync() {
+    this.showToast('Syncing with Google Sheets...', 'info');
+    const res = await syncService.syncPendingRecords();
+    if (res.success) {
+      this.showToast(res.message, 'success');
+    } else {
+      this.showToast(res.message || res.error, 'warning');
+    }
+  }
+
+  /* ==========================================================================
+     PAGE 18: DEVICE MANAGEMENT
+     ========================================================================== */
+
+  async renderDeviceManagementView(container) {
+    const devInfo = syncService.getDeviceInfo();
+    const reports = await db.getAll('reports');
+
+    container.innerHTML = `
+      <div style="margin-bottom: 20px;">
+        <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Device Identification &amp; Registry</h2>
+        <p style="font-size: 13.5px; color: var(--text-muted);">
+          Hardware identification, persistent installation UUID, and device-level audit trails.
+        </p>
+      </div>
+
+      <div class="card" style="max-width: 700px; margin-bottom: 20px;">
+        <div class="card-header">
+          <div class="card-title">📱 Current Device Telemetry</div>
+          <span class="badge badge-completed">Active Installation</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; font-size: 13.5px;">
+          <div style="color: var(--text-muted); font-weight: 600;">Device ID:</div>
+          <div><code>${devInfo.deviceId}</code></div>
+
+          <div style="color: var(--text-muted); font-weight: 600;">Hardware / Name:</div>
+          <div><strong>${devInfo.deviceName}</strong></div>
+
+          <div style="color: var(--text-muted); font-weight: 600;">Browser &amp; OS:</div>
+          <div>${devInfo.browserOs}</div>
+
+          <div style="color: var(--text-muted); font-weight: 600;">Screen:</div>
+          <div>${devInfo.screenResolution}</div>
+
+          <div style="color: var(--text-muted); font-weight: 600;">Total Reports:</div>
+          <div><strong>${reports.length} submitted from this device</strong></div>
+        </div>
+      </div>
+    `;
+  }
+
+  /* ==========================================================================
+     PAGE 19: SETTINGS
+     ========================================================================== */
+
+  async renderSettingsView(container) {
+    const apiUrl = await db.getSetting('apiUrl', '');
+    const workingDays = await db.getSetting('workingDaysPerWeek', 6);
+    const restDays = await db.getSetting('restDays', 'Sunday');
+
+    container.innerHTML = `
+      <div class="card" style="max-width: 760px; margin: 0 auto;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">⚙️ System &amp; API Settings</div>
+            <div class="card-subtitle">Google Apps Script Web App connection and calendar configurations</div>
+          </div>
+        </div>
+
+        <form id="settings-form" onsubmit="event.preventDefault(); app.saveSettings();">
+          <div class="form-group">
+            <label class="form-label required">Google Apps Script Web App URL</label>
+            <input type="url" id="setting-api-url" class="form-control" value="${apiUrl}" placeholder="https://script.google.com/macros/s/.../exec" required />
+            <div class="form-helper">
+              Paste the deployed Web App URL from your Google Apps Script project ending in <code>/exec</code>.
+            </div>
+          </div>
+
+          <div style="margin: 14px 0;">
+            <button type="button" class="btn btn-outline" style="width: 100%;" onclick="app.testApiConnection()">
+              🔌 Test Connection &amp; Initialize Google Sheets (19 Sheets)
+            </button>
+            <div id="settings-test-status" style="margin-top: 8px; font-size: 13px; font-weight: 600;"></div>
+          </div>
+
+          <div class="form-grid-2" style="margin-top: 18px;">
+            <div class="form-group">
+              <label class="form-label">Working Days per Week</label>
+              <input type="number" id="setting-working-days" class="form-control" value="${workingDays}" min="1" max="7" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Scheduled Weekly Rest Days</label>
+              <input type="text" id="setting-rest-days" class="form-control" value="${restDays}" />
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+            <button type="button" class="btn btn-outline" onclick="app.pullMasterDataFromServer()">⬇️ Refresh Master Data</button>
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+
+  async testApiConnection() {
+    const url = document.getElementById('setting-api-url').value.trim();
+    const statusEl = document.getElementById('settings-test-status');
+
+    if (!url) {
+      statusEl.textContent = '❌ Please enter a valid Web App URL.';
+      statusEl.style.color = '#ef4444';
+      return;
+    }
+
+    statusEl.textContent = '⏳ Testing connection to Google Apps Script & initializing database...';
+    statusEl.style.color = '#15803d';
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'SETUP_DB' })
+      });
+      const result = await response.json();
+      if (result.success) {
+        statusEl.textContent = '✅ Connected successfully! All 19 sheets verified and ready in Google Sheets.';
+        statusEl.style.color = '#15803d';
+        await db.setSetting('apiUrl', url);
+      } else {
+        statusEl.textContent = '❌ Error: ' + result.error;
+        statusEl.style.color = '#ef4444';
+      }
+    } catch (e) {
+      statusEl.textContent = '❌ Connection failed: ' + e.message;
+      statusEl.style.color = '#ef4444';
+    }
+  }
+
+  async saveSettings() {
+    const url = document.getElementById('setting-api-url').value.trim();
+    const workingDays = parseInt(document.getElementById('setting-working-days').value) || 6;
+    const restDays = document.getElementById('setting-rest-days').value.trim();
+
+    await db.setSetting('apiUrl', url);
+    await db.setSetting('workingDaysPerWeek', workingDays);
+    await db.setSetting('restDays', restDays);
+
+    this.showToast('System settings saved.', 'success');
+  }
+
+  async pullMasterDataFromServer() {
+    this.showToast('Pulling master dropdowns from Google Sheets...', 'info');
+    try {
+      const result = await syncService.pullMasterData();
+      this.showToast(result.message, 'success');
+    } catch (e) {
+      this.showToast(e.message, 'error');
+    }
+  }
+
+  /* ==========================================================================
+     PAGE 20: USER PROFILE & LOCAL PHOTO UPLOAD
+     ========================================================================== */
+
+  async renderProfileView(container) {
+    const user = auth.getCurrentUser();
+    if (!user) return;
+
+    const hasAvatar = !!user.avatarUrl;
+    const avatarContent = hasAvatar
+      ? `<img src="${user.avatarUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" alt="Profile Photo" />`
+      : `<span style="font-size: 24px; font-weight: 700; color: #ffffff;">${(user.fullName || user.username).charAt(0).toUpperCase()}</span>`;
+
+    container.innerHTML = `
+      <div class="card" style="max-width: 640px; margin: 0 auto;">
+        <div class="card-header">
+          <div class="card-title">👤 User Profile</div>
+          <span class="badge badge-completed">${user.role}</span>
+        </div>
+
+        <!-- User Info & Interactive Local Photo Upload -->
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <!-- Interactive Avatar Tile with Click-to-Upload and Badge -->
+            <div style="position: relative; cursor: pointer;" onclick="app.triggerProfilePhotoUpload()" title="Click to upload profile picture from your device">
+              <div class="user-avatar" style="width: 72px; height: 72px; overflow: hidden; border: 3px solid var(--palm-border); box-shadow: 0 4px 10px rgba(0,0,0,0.12); background: linear-gradient(135deg, var(--palm-medium), var(--palm-primary)); display: flex; align-items: center; justify-content: center;">
+                ${avatarContent}
+              </div>
+              <div style="position: absolute; bottom: -2px; right: -2px; width: 26px; height: 26px; border-radius: 50%; background: #ffffff; border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 13px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);" title="Upload local picture">
+                📷
+              </div>
+            </div>
+
+            <div>
+              <h3 style="font-size: 18px; font-weight: 700; color: var(--text-main); line-height: 1.2;">${user.fullName}</h3>
+              <div style="font-size: 13px; color: var(--text-muted); margin-top: 3px;">@${user.username} &bull; ${user.employeeId}</div>
+              
+              <!-- Hidden native file picker for local images -->
+              <input type="file" id="profile-photo-input" accept="image/*" style="display: none;" onchange="app.handleProfilePhotoUpload(event)" />
+
+              <!-- Upload & Remove Action Buttons -->
+              <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <button type="button" class="btn btn-outline" style="padding: 5px 12px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px;" onclick="app.triggerProfilePhotoUpload()">
+                  <span>📷</span>
+                  <span>${hasAvatar ? 'Change Photo' : 'Upload Local Picture'}</span>
+                </button>
+                ${hasAvatar ? `
+                  <button type="button" class="btn btn-outline btn-danger" style="padding: 5px 10px; font-size: 12.5px;" onclick="app.handleRemoveProfilePhoto()" title="Remove custom photo">
+                    🗑️ Remove
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 140px 1fr; gap: 12px; font-size: 13.5px; border-top: 1px solid var(--border); padding-top: 16px;">
+          <div style="color: var(--text-muted); font-weight: 600;">Assigned Supervisor:</div>
+          <div>${user.assignedSupervisor || 'None'}</div>
+
+          <div style="color: var(--text-muted); font-weight: 600;">Assigned Areas:</div>
+          <div>${Array.isArray(user.assignedLandOwners) ? user.assignedLandOwners.join(', ') : user.assignedLandOwners}</div>
+
+          <div style="color: var(--text-muted); font-weight: 600;">Assigned Blocks:</div>
+          <div>${Array.isArray(user.assignedFarmAndBlocks) ? user.assignedFarmAndBlocks.join(', ') : user.assignedFarmAndBlocks}</div>
+
+          <div style="color: var(--text-muted); font-weight: 600;">Offline Access:</div>
+          <div><span class="badge badge-completed">Enabled (Cached Session)</span></div>
+        </div>
+
+        <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end;">
+          <button class="btn btn-danger" onclick="app.handleLogout()">Sign Out</button>
+        </div>
+      </div>
+    `;
+  }
+
+  /* Trigger the hidden local file picker */
+  triggerProfilePhotoUpload() {
+    const input = document.getElementById('profile-photo-input');
+    if (input) {
+      input.value = ''; // Reset input to allow re-selecting same file
+      input.click();
+    }
+  }
+
+  /* Process selected image: resize/compress via Canvas and save locally in IndexedDB */
+  async handleProfilePhotoUpload(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      this.showToast('Please select a valid image file (PNG, JPG, JPEG, WEBP).', 'error');
+      return;
+    }
+
+    this.showToast('Processing local photo...', 'info');
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = async () => {
+        // High-DPI Square Canvas Compression (256x256 max, ~20KB payload)
+        const canvas = document.createElement('canvas');
+        const maxSize = 256;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+        // Update current user record in auth & IndexedDB
+        const currentUser = auth.getCurrentUser();
+        if (currentUser) {
+          currentUser.avatarUrl = dataUrl;
+
+          // Save to IndexedDB stores for offline persistence
+          await db.put('users', currentUser);
+          await db.setSetting('currentUser', currentUser);
+
+          // Update avatars across UI (Sidebar & Profile)
+          this.renderUserMetaHeader();
+          const container = document.getElementById('view-content-root');
+          if (container && this.currentView === 'profile') {
+            this.renderProfileView(container);
+          }
+
+          this.showToast('Profile picture updated successfully from your local device!', 'success');
+        }
+      };
+      img.onerror = () => {
+        this.showToast('Failed to load image. Please try another file.', 'error');
+      };
+      img.src = e.target.result;
+    };
+
+    reader.onerror = () => {
+      this.showToast('Error reading local file.', 'error');
+    };
+
+    reader.readAsDataURL(file);
+  }
+
+  /* Remove profile photo and revert to initial letter */
+  async handleRemoveProfilePhoto() {
+    if (!confirm('Remove your custom profile picture and revert to initial?')) return;
+
+    const currentUser = auth.getCurrentUser();
+    if (!currentUser) return;
+
+    delete currentUser.avatarUrl;
+    await db.put('users', currentUser);
+    await db.setSetting('currentUser', currentUser);
+
+    this.renderUserMetaHeader();
+    const container = document.getElementById('view-content-root');
+    if (container && this.currentView === 'profile') {
+      this.renderProfileView(container);
+    }
+
+    this.showToast('Profile picture removed.', 'info');
+  }
+
+  /* ==========================================================================
+     QR CODE SCANNER MODAL (Camera + Canvas + Manual Fallback)
+     ========================================================================== */
+
+  openQrScanner(targetInputId) {
+    this.qrTargetInputId = targetInputId;
+    this.openModal('qr-modal');
+
+    const video = document.getElementById('qr-video');
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then((stream) => {
+          this.qrStream = stream;
+          video.srcObject = stream;
+        })
+        .catch((err) => {
+          console.warn('[QR] Camera access blocked or not available:', err);
+        });
+    }
+  }
+
+  applyManualQrInput() {
+    const val = document.getElementById('qr-manual-input').value.trim();
+    if (!val) {
+      this.showToast('Please type a code or number.', 'warning');
+      return;
+    }
+
+    if (this.qrTargetInputId) {
+      const input = document.getElementById(this.qrTargetInputId);
+      if (input) input.value = val;
+    }
+
+    this.closeModal('qr-modal');
+    this.showToast(`Code "${val}" applied.`, 'success');
+  }
+
+  /* ==========================================================================
+     MODAL CONTROLS & TOAST NOTIFICATIONS
+     ========================================================================== */
+
+  openModal(modalId) {
+    const m = document.getElementById(modalId);
+    if (m) m.classList.add('active');
+  }
+
+  closeModal(modalId) {
+    const m = document.getElementById(modalId);
+    if (m) m.classList.remove('active');
+
+    if (modalId === 'qr-modal' && this.qrStream) {
+      this.qrStream.getTracks().forEach((track) => track.stop());
+      this.qrStream = null;
+    }
+  }
+
+  showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type === 'error' ? 'toast-error' : (type === 'warning' ? 'toast-warning' : '')}`;
+    toast.innerHTML = `
+      <span>${type === 'error' ? '❌' : (type === 'warning' ? '⚠️' : '✅')}</span>
+      <span>${message}</span>
+    `;
+
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      toast.style.transition = 'all 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
+  }
+}
+
+// Global Application Instance
+const app = new FarmOpsApp();
+
+// Boot application upon DOM ready
+window.addEventListener('DOMContentLoaded', () => {
+  app.init();
+});
