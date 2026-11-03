@@ -426,6 +426,10 @@ class FarmOpsApp {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span>Daily Monitoring</span>
       </div>
+      <div class="nav-link ${this.currentView === 'cycle-monitoring' ? 'active' : ''}" onclick="app.navigateTo('cycle-monitoring')">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 15l2 2 4-4"/></svg>
+        <span>Cycle Monitoring</span>
+      </div>
       <div class="nav-link ${this.currentView === 'manpower-monitoring' ? 'active' : ''}" onclick="app.navigateTo('manpower-monitoring')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span>Manpower Monitoring</span>
@@ -611,6 +615,11 @@ class FarmOpsApp {
       case (customActivityId ? viewName : '__none__'):
         if (titleEl) titleEl.textContent = 'Activity Registration';
         await this.renderCustomActivityForm(container, customActivityId);
+        break;
+
+      case 'cycle-monitoring':
+        if (titleEl) titleEl.textContent = 'Cycle Monitoring';
+        await this.renderCycleMonitoringView(container);
         break;
 
       case 'daily-monitoring':
@@ -1025,6 +1034,9 @@ class FarmOpsApp {
         </div>
       </div>
     `;
+
+    // Cycle progress for this month (only the user's Farm & Blocks)
+    await this.renderCycleDashboardCard(container);
   }
 
   /* ==========================================================================
@@ -3521,8 +3533,12 @@ class FarmOpsApp {
     const landowners = await db.getAll('landowners');
     const parcels = await db.getAll('parcels');
     const e = (v) => this.esc(v);
+    const loByName = new Map(landowners.map((l) => [String(l.landOwnerName).toLowerCase(), l]));
+    const loOf = (b) => loByName.get(String(b.landOwnerName).toLowerCase()) || {};
+    const nextNo = landowners.reduce((m, l) => Math.max(m, parseInt(l.landOwnerNo, 10) || 0), 0) + 1;
 
     blocks.sort((a, b) =>
+      ((parseInt(loOf(a).landOwnerNo, 10) || 9999) - (parseInt(loOf(b).landOwnerNo, 10) || 9999)) ||
       String(a.landOwnerName).localeCompare(String(b.landOwnerName)) ||
       String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }) ||
       String(a.farmBlockName).localeCompare(String(b.farmBlockName), undefined, { numeric: true })
@@ -3530,19 +3546,21 @@ class FarmOpsApp {
 
     const activeCount = blocks.filter((b) => b.status !== 'Deactivated').length;
     const unassigned = blocks.filter((b) => b.status !== 'Deactivated' && (!b.supervisorNames || !b.supervisorNames.length)).length;
+    const priorityCount = landowners.filter((l) => l.status !== 'Deactivated' && l.category === 'Priority').length;
 
     container.innerHTML = `
       <div style="margin-bottom: 20px;">
         <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Land Owner Enrollment</h2>
         <p style="font-size: 13.5px; color: var(--text-muted);">
-          Enroll a land owner with its parcel number and farm &amp; block. The supervisor is filled in automatically
-          from the Farm &amp; Block assigned to a Supervisor in User Management.
+          Enroll a land owner with its number, category, parcel and farm &amp; block. The supervisor is filled in automatically
+          from User Management. Area and palm count are used for Cycle Monitoring percentages.
         </p>
       </div>
 
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-icon green">🏡</div><div class="stat-info">
-          <div class="stat-label">Land Owners</div><div class="stat-value">${landowners.filter((l) => l.status !== 'Deactivated').length}</div></div></div>
+          <div class="stat-label">Land Owners</div><div class="stat-value">${landowners.filter((l) => l.status !== 'Deactivated').length}</div>
+          <div class="stat-sub">${priorityCount} Priority</div></div></div>
         <div class="stat-card"><div class="stat-icon blue">🗂️</div><div class="stat-info">
           <div class="stat-label">Parcels</div><div class="stat-value">${parcels.filter((p) => p.status !== 'Deactivated').length}</div></div></div>
         <div class="stat-card"><div class="stat-icon green">🌴</div><div class="stat-info">
@@ -3556,32 +3574,57 @@ class FarmOpsApp {
         <div class="card-header">
           <div>
             <div class="card-title">➕ Enroll Land Owner</div>
-            <div class="card-subtitle">Existing land owners and parcels are reused automatically. Separate several blocks with commas.</div>
+            <div class="card-subtitle">Typing an existing land owner fills in its number and category. Separate several blocks with commas.</div>
           </div>
         </div>
         <form id="enroll-form" onsubmit="event.preventDefault(); app.submitLandownerEnrollment();">
           <div class="form-grid-3">
             <div class="form-group">
+              <label class="form-label required">Land Owner No.</label>
+              <input type="number" id="enr-no" class="form-control" min="1" step="1" value="${nextNo}" required />
+              <div class="form-helper">Next free number: ${nextNo}</div>
+            </div>
+            <div class="form-group">
               <label class="form-label required">Land Owner Name</label>
               <input type="text" id="enr-landowner" class="form-control" list="enr-landowner-list" maxlength="120"
-                     placeholder="e.g. Juan Santos" required oninput="app.updateEnrollmentParcelList()" />
+                     placeholder="e.g. Onal Sumpo" required oninput="app.updateEnrollmentParcelList()" />
               <datalist id="enr-landowner-list">
                 ${landowners.map((l) => `<option value="${e(l.landOwnerName)}"></option>`).join('')}
               </datalist>
             </div>
             <div class="form-group">
+              <label class="form-label required">Category</label>
+              <select id="enr-category" class="form-control">
+                <option value="Not Priority">Not Priority</option>
+                <option value="Priority">Priority</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
               <label class="form-label required">Parcel Number</label>
               <input type="text" id="enr-parcel" class="form-control" list="enr-parcel-list" maxlength="120"
-                     placeholder="e.g. Parcel 101" required />
+                     placeholder="e.g. P1" required />
               <datalist id="enr-parcel-list"></datalist>
             </div>
             <div class="form-group">
               <label class="form-label required">Farm &amp; Block</label>
               <input type="text" id="enr-block" class="form-control" maxlength="500"
-                     placeholder="e.g. Block A1 (or Block A1, Block A2)" required />
+                     placeholder="e.g. Farm 1 Block 1 (or Farm 1 Block 1, Farm 1 Block 2)" required oninput="app.updateEnrollmentSizeFields()" />
             </div>
           </div>
-          <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Area (Ha)</label>
+              <input type="number" id="enr-area" class="form-control" min="0" step="0.01" placeholder="e.g. 4.5" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Palm Count</label>
+              <input type="number" id="enr-palms" class="form-control" min="0" step="1" placeholder="e.g. 640" />
+            </div>
+          </div>
+          <div id="enr-size-hint" class="form-helper" style="margin-top:-6px;">Area and palm count are for one block. For several blocks, set them later with ✏️.</div>
+          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
             <button type="reset" class="btn btn-outline">Clear</button>
             <button type="submit" id="enr-submit" class="btn btn-primary">✓ Enroll</button>
           </div>
@@ -3589,12 +3632,14 @@ class FarmOpsApp {
       </div>
 
       <div class="filter-toolbar">
-        <input type="text" id="enr-search" class="form-control" placeholder="🔍 Search land owner, parcel, block or supervisor..." oninput="app.filterEnrollmentTable()" />
+        <input type="text" id="enr-search" class="form-control" placeholder="🔍 Search no., land owner, parcel, block or supervisor..." oninput="app.filterEnrollmentTable()" />
         <select id="enr-status" class="form-control" onchange="app.filterEnrollmentTable()">
           <option value="Active">Active only</option>
           <option value="ALL">All statuses</option>
           <option value="Deactivated">Deactivated only</option>
           <option value="NOSUP">Active without supervisor</option>
+          <option value="PRIORITY">Priority only</option>
+          <option value="NOSIZE">Missing area / palms</option>
         </select>
       </div>
 
@@ -3603,9 +3648,13 @@ class FarmOpsApp {
           <table class="table">
             <thead>
               <tr>
+                <th>No.</th>
                 <th>Land Owner</th>
-                <th>Parcel Number</th>
+                <th>Category</th>
+                <th>Parcel</th>
                 <th>Farm &amp; Block</th>
+                <th>Area (Ha)</th>
+                <th>Palms</th>
                 <th>Supervisor (auto)</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -3613,19 +3662,27 @@ class FarmOpsApp {
             </thead>
             <tbody id="enr-table-body">
               ${blocks.length === 0 ? `
-                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">
+                <tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:24px;">
                   No land owners enrolled yet. Use the form above to enroll the first one.</td></tr>` : blocks.map((b) => {
+                  const lo = loOf(b);
                   const sup = (b.supervisorNames && b.supervisorNames.length) ? b.supervisorNames.join(', ') : '';
                   const active = b.status !== 'Deactivated';
+                  const noSize = !b.areaHa || !b.palmCount;
                   return `
                 <tr class="enr-row" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
-                    data-search="${e([b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
+                    data-priority="${lo.category === 'Priority' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}"
+                    data-search="${e([lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
+                  <td><strong>${e(lo.landOwnerNo || '—')}</strong></td>
                   <td><strong>${e(b.landOwnerName)}</strong></td>
+                  <td>${this.categoryBadge(lo.category)}</td>
                   <td>${e(b.parcelNumber)}</td>
                   <td>${e(b.farmBlockName)} <span style="font-size:11px;color:var(--text-light);">${e(b.blockId)}</span></td>
+                  <td>${b.areaHa ? e(b.areaHa) : '<span style="color:#92400e;">—</span>'}</td>
+                  <td>${b.palmCount ? e(b.palmCount) : '<span style="color:#92400e;">—</span>'}</td>
                   <td>${sup ? `👤 ${e(sup)}` : `<span class="badge badge-behind">Unassigned</span>`}</td>
                   <td><span class="badge ${active ? 'badge-completed' : 'badge-behind'}">${active ? 'Active' : 'Deactivated'}</span></td>
-                  <td>
+                  <td style="white-space:nowrap;">
+                    <button class="btn btn-outline btn-icon" title="Edit number, category, area, palms" onclick="app.openEditEnrollmentModal('${e(b.blockId)}')">✏️</button>
                     ${active
                       ? `<button class="btn btn-danger btn-icon" title="Deactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Deactivated')">🚫</button>`
                       : `<button class="btn btn-outline btn-icon" title="Reactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Active')">♻️</button>`}
@@ -3639,6 +3696,8 @@ class FarmOpsApp {
     `;
 
     this._enrollParcels = parcels;
+    this._enrollLandowners = landowners;
+    this._enrollNextNo = nextNo;
     this.filterEnrollmentTable();
   }
 
@@ -3648,6 +3707,27 @@ class FarmOpsApp {
     if (!list) return;
     const parcels = (this._enrollParcels || []).filter((p) => String(p.landOwnerName).toLowerCase() === lo);
     list.innerHTML = parcels.map((p) => `<option value="${this.esc(p.parcelNumber)}"></option>`).join('');
+
+    // Existing land owner: show its number and category
+    const existing = (this._enrollLandowners || []).find((l) => String(l.landOwnerName).toLowerCase() === lo);
+    const noEl = document.getElementById('enr-no');
+    const catEl = document.getElementById('enr-category');
+    if (existing) {
+      if (existing.landOwnerNo) noEl.value = existing.landOwnerNo;
+      catEl.value = existing.category === 'Priority' ? 'Priority' : 'Not Priority';
+    } else if (this._enrollFilledFromExisting) {
+      noEl.value = this._enrollNextNo;
+    }
+    this._enrollFilledFromExisting = !!existing;
+  }
+
+  updateEnrollmentSizeFields() {
+    const many = document.getElementById('enr-block').value.split(',').filter((s) => s.trim()).length > 1;
+    ['enr-area', 'enr-palms'].forEach((id) => {
+      const el = document.getElementById(id);
+      el.disabled = many;
+      if (many) el.value = '';
+    });
   }
 
   filterEnrollmentTable() {
@@ -3655,10 +3735,13 @@ class FarmOpsApp {
     const st = document.getElementById('enr-status')?.value || 'Active';
     document.querySelectorAll('.enr-row').forEach((row) => {
       const matchText = !q || row.dataset.search.includes(q);
+      const active = row.dataset.status === 'Active';
       let matchStatus = true;
-      if (st === 'Active') matchStatus = row.dataset.status === 'Active';
-      else if (st === 'Deactivated') matchStatus = row.dataset.status === 'Deactivated';
-      else if (st === 'NOSUP') matchStatus = row.dataset.status === 'Active' && row.dataset.nosup === '1';
+      if (st === 'Active') matchStatus = active;
+      else if (st === 'Deactivated') matchStatus = !active;
+      else if (st === 'NOSUP') matchStatus = active && row.dataset.nosup === '1';
+      else if (st === 'PRIORITY') matchStatus = active && row.dataset.priority === '1';
+      else if (st === 'NOSIZE') matchStatus = active && row.dataset.nosize === '1';
       row.style.display = matchText && matchStatus ? '' : 'none';
     });
   }
@@ -3666,9 +3749,13 @@ class FarmOpsApp {
   async submitLandownerEnrollment() {
     const btn = document.getElementById('enr-submit');
     const enrollment = {
+      landOwnerNo: document.getElementById('enr-no').value,
       landOwnerName: document.getElementById('enr-landowner').value.trim(),
+      category: document.getElementById('enr-category').value,
       parcelNumber: document.getElementById('enr-parcel').value.trim(),
-      farmBlocks: document.getElementById('enr-block').value.split(',').map((s) => s.trim()).filter(Boolean)
+      farmBlocks: document.getElementById('enr-block').value.split(',').map((s) => s.trim()).filter(Boolean),
+      areaHa: document.getElementById('enr-area').value,
+      palmCount: document.getElementById('enr-palms').value
     };
     if (!enrollment.landOwnerName || !enrollment.parcelNumber || !enrollment.farmBlocks.length) {
       this.showToast('Land Owner Name, Parcel Number and Farm & Block are required.', 'warning');
@@ -3681,6 +3768,84 @@ class FarmOpsApp {
       document.getElementById('enr-submit').disabled = false;
       document.getElementById('enr-submit').textContent = '✓ Enroll';
     }
+  }
+
+  /** Edit land owner number / category and the block's area / palm count. */
+  async openEditEnrollmentModal(blockId) {
+    const block = await db.get('farmsAndBlocks', blockId);
+    if (!block) return;
+    const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerName).toLowerCase() === String(block.landOwnerName).toLowerCase()) || {};
+    const e = (v) => this.esc(v);
+
+    document.getElementById('form-modal-title').textContent = `Edit: ${block.landOwnerName} › ${block.parcelNumber} › ${block.farmBlockName}`;
+    document.getElementById('form-modal-body').innerHTML = `
+      <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">🏡 Land Owner (applies to all of ${e(block.landOwnerName)}'s blocks)</div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label required">Land Owner No.</label>
+          <input type="number" id="ed-no" class="form-control" min="1" step="1" value="${e(lo.landOwnerNo || '')}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select id="ed-category" class="form-control">
+            <option value="Not Priority" ${lo.category !== 'Priority' ? 'selected' : ''}>Not Priority</option>
+            <option value="Priority" ${lo.category === 'Priority' ? 'selected' : ''}>Priority</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Contact Person</label>
+          <input type="text" id="ed-contact" class="form-control" value="${e(lo.contactPerson || '')}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input type="text" id="ed-phone" class="form-control" value="${e(lo.phone || '')}" />
+        </div>
+      </div>
+      <div style="font-weight:700;color:var(--palm-dark);margin:6px 0 8px;">🌴 ${e(block.farmBlockName)}</div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Area (Ha)</label>
+          <input type="number" id="ed-area" class="form-control" min="0" step="0.01" value="${e(block.areaHa || '')}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Palm Count</label>
+          <input type="number" id="ed-palms" class="form-control" min="0" step="1" value="${e(block.palmCount || '')}" />
+        </div>
+      </div>
+    `;
+
+    const btn = document.getElementById('form-modal-submit-btn');
+    btn.textContent = 'Save';
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        if (lo.landOwnerId) {
+          await syncService.apiCall('UPDATE_LANDOWNER', {
+            landOwnerId: lo.landOwnerId,
+            landOwnerNo: document.getElementById('ed-no').value,
+            category: document.getElementById('ed-category').value,
+            contactPerson: document.getElementById('ed-contact').value,
+            phone: document.getElementById('ed-phone').value
+          });
+        }
+        await syncService.apiCall('UPDATE_BLOCK', {
+          blockId,
+          areaHa: document.getElementById('ed-area').value,
+          palmCount: document.getElementById('ed-palms').value
+        });
+        await syncService.pullMasterData();
+        this.closeModal('form-modal');
+        this.showToast('Saved.', 'success');
+        this.navigateTo('landowner-enrollment');
+      } catch (err) {
+        this.showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    this.openModal('form-modal');
   }
 
   async setBlockStatus(blockId, status) {
