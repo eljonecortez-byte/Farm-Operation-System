@@ -42,7 +42,7 @@ Object.assign(FarmOpsApp.prototype, {
       this._cycleState = {
         year: String(now.getFullYear()),
         groupBy: 'month',
-        period: String(now.getMonth() + 1).padStart(2, '0'),
+        period: 'ALL',            // whole year: January to December
         category: 'ALL',
         landOwner: 'ALL',
         search: '',
@@ -121,10 +121,16 @@ Object.assign(FarmOpsApp.prototype, {
       String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }) ||
       String(a.farmBlockName).localeCompare(String(b.farmBlockName), undefined, { numeric: true }));
 
-    const years = new Set([year, String(new Date().getFullYear())]);
-    (await db.getAll('reports')).forEach((r) => { if (/^\d{4}/.test(r.date || '')) years.add(String(r.date).slice(0, 4)); });
+    const thisYear = new Date().getFullYear();
+    let firstYear = thisYear - 2;
+    (await db.getAll('reports')).forEach((r) => {
+      const y = parseInt(String(r.date || '').slice(0, 4), 10);
+      if (y > 2000 && y < firstYear) firstYear = y;
+    });
+    const years = [];
+    for (let y = Math.max(thisYear + 1, parseInt(year, 10) || thisYear); y >= Math.min(firstYear, parseInt(year, 10) || thisYear); y--) years.push(String(y));
 
-    return { rows, periods, years: [...years].sort().reverse() };
+    return { rows, periods, years };
   },
 
   cycleBase(row, activity) {
@@ -179,8 +185,12 @@ Object.assign(FarmOpsApp.prototype, {
     if (st.period !== 'ALL' && !data.periods.some((p) => p.key === st.period)) st.period = 'ALL';
     const shownPeriods = st.period === 'ALL' ? data.periods : data.periods.filter((p) => p.key === st.period);
     const periodKeys = shownPeriods.map((p) => p.key);
+    // Grid column groups: each month (or cycle) + a whole-year total when all are shown
+    const gridCols = shownPeriods.map((p) => ({ label: p.label, keys: [p.key], total: false }));
+    if (st.period === 'ALL') gridCols.push({ label: `Total ${st.year}`, keys: periodKeys, total: true });
+
     const periodLabel = st.period === 'ALL'
-      ? `All ${st.groupBy === 'cycle' ? 'cycles' : 'months'} ${st.year}`
+      ? (st.groupBy === 'cycle' ? `All cycles ${st.year}` : `January – December ${st.year}`)
       : `${shownPeriods[0].label} ${st.year}`;
 
     const landOwnerNames = [...new Set(data.rows.map((r) => r.landOwnerName))].sort();
@@ -218,15 +228,15 @@ Object.assign(FarmOpsApp.prototype, {
       </div>
 
       <div class="filter-toolbar" style="flex-wrap:wrap;">
-        <select class="form-control" style="max-width:110px;" onchange="app.setCycleFilter('year', this.value)">
-          ${data.years.map((y) => `<option value="${y}" ${y === st.year ? 'selected' : ''}>${y}</option>`).join('')}
+        <select class="form-control" style="max-width:130px;" title="Year" onchange="app.setCycleFilter('year', this.value)">
+          ${data.years.map((y) => `<option value="${y}" ${y === st.year ? 'selected' : ''}>Year ${y}</option>`).join('')}
         </select>
         <select class="form-control" style="max-width:150px;" onchange="app.setCycleFilter('groupBy', this.value)">
           <option value="month" ${st.groupBy === 'month' ? 'selected' : ''}>By Month</option>
           <option value="cycle" ${st.groupBy === 'cycle' ? 'selected' : ''}>By Cycle</option>
         </select>
         <select class="form-control" style="max-width:180px;" onchange="app.setCycleFilter('period', this.value)">
-          <option value="ALL" ${st.period === 'ALL' ? 'selected' : ''}>All ${st.groupBy === 'cycle' ? 'cycles' : 'months'}</option>
+          <option value="ALL" ${st.period === 'ALL' ? 'selected' : ''}>${st.groupBy === 'cycle' ? 'All cycles' : 'Whole year (Jan–Dec)'}</option>
           ${data.periods.map((p) => `<option value="${e(p.key)}" ${p.key === st.period ? 'selected' : ''}>${e(p.label)}</option>`).join('')}
         </select>
         <select class="form-control" style="max-width:160px;" onchange="app.setCycleFilter('category', this.value)">
@@ -256,36 +266,63 @@ Object.assign(FarmOpsApp.prototype, {
 
       ${rows.length === 0 ? `<div class="card" style="text-align:center;color:var(--text-muted);padding:30px;">No Farm &amp; Blocks to show. ${auth.isAdmin() ? 'Enroll land owners first.' : 'Ask your administrator to assign Farm &amp; Blocks to you.'}</div>` : `
 
-      <!-- 1) Cycle grid (like the spreadsheet) -->
+      <!-- 1) Cycle grid (like the spreadsheet): January to December + year total -->
+      <style>
+        /* let the wide year table scroll inside its box instead of stretching the page */
+        #main-content, #view-content-root { min-width: 0; }
+        #view-content-root { width: 100%; }
+        .cycle-table th.grp { text-align:center; border-left:2px solid var(--border); }
+        .cycle-table th.grp-total, .cycle-table td.col-total { background-color:#ecfdf5; }
+        .cycle-table th.grp-total { color:var(--palm-primary, #14532d); }
+        @media (min-width: 1200px) {
+          /* keep the land owner columns visible while scrolling through the months */
+          .cycle-table .sc { position:sticky; z-index:2; background:var(--bg-surface, #fff); white-space:normal; padding-left:10px; padding-right:10px; }
+          .cycle-table thead .sc { background:#f8fafc; z-index:3; }
+          .cycle-table tbody tr:hover .sc { background:var(--bg-hover, #f1f5f9); }
+          .cycle-table .sc1 { left:0; min-width:44px; max-width:44px; }
+          .cycle-table .sc2 { left:44px; min-width:140px; max-width:140px; }
+          .cycle-table .sc3 { left:184px; min-width:72px; max-width:72px; }
+          .cycle-table .sc4 { left:256px; min-width:140px; max-width:140px; }
+          .cycle-table .sc5 { left:396px; min-width:112px; max-width:112px; box-shadow:2px 0 0 var(--border); }
+        }
+      </style>
       <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px;">
-        <div class="card-header" style="padding:14px 18px;"><div class="card-title">📅 Cycle Monitoring per Land Owner &amp; Farm &amp; Block</div></div>
+        <div class="card-header" style="padding:14px 18px;">
+          <div>
+            <div class="card-title">📅 Cycle Monitoring per Land Owner &amp; Farm &amp; Block — ${e(st.year)}</div>
+            <div class="card-subtitle">${st.period === 'ALL' ? 'January to December. Scroll sideways to see all months and the year total.' : e(periodLabel)}</div>
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table cycle-table" style="font-size:12.5px;">
             <thead>
               <tr>
-                <th rowspan="2">No.</th>
-                <th rowspan="2">Land Owner Name</th>
-                <th rowspan="2">Parcel</th>
-                <th rowspan="2">Farm &amp; Block</th>
-                <th rowspan="2">Category</th>
-                ${shownPeriods.map((p) => `<th colspan="${CYCLE_ACTIVITIES.length}" style="text-align:center;border-left:2px solid var(--border);">${e(p.label)}</th>`).join('')}
+                <th rowspan="2" class="sc sc1">No.</th>
+                <th rowspan="2" class="sc sc2">Land Owner Name</th>
+                <th rowspan="2" class="sc sc3">Parcel</th>
+                <th rowspan="2" class="sc sc4">Farm &amp; Block</th>
+                <th rowspan="2" class="sc sc5">Category</th>
+                ${gridCols.map((c) => `<th colspan="${CYCLE_ACTIVITIES.length}" class="grp ${c.total ? 'grp-total' : ''}">${e(c.label)}</th>`).join('')}
               </tr>
               <tr>
-                ${shownPeriods.map(() => CYCLE_ACTIVITIES.map((a, i) => `<th style="text-align:center;white-space:normal;min-width:78px;${i === 0 ? 'border-left:2px solid var(--border);' : ''}">${e(a.label)}</th>`).join('')).join('')}
+                ${gridCols.map((c) => CYCLE_ACTIVITIES.map((a, i) => `<th class="${c.total ? 'grp-total' : ''}" style="text-align:center;white-space:normal;min-width:84px;${i === 0 ? 'border-left:2px solid var(--border);' : ''}">${e(a.label)}</th>`).join('')).join('')}
               </tr>
             </thead>
             <tbody>
               ${rows.map((r) => `
                 <tr class="cycle-row" data-search="${searchText(r)}">
-                  <td>${r.landOwnerNo || '—'}</td>
-                  <td><strong>${e(r.landOwnerName)}</strong></td>
-                  <td>${e(r.parcelNumber)}</td>
-                  <td>${e(r.farmBlockName)}</td>
-                  <td>${this.categoryBadge(r.category)}</td>
-                  ${shownPeriods.map((p) => CYCLE_ACTIVITIES.map((a) => {
-                    const qty = this.cycleQty(r, a, [p.key]);
+                  <td class="sc sc1">${r.landOwnerNo || '—'}</td>
+                  <td class="sc sc2"><strong>${e(r.landOwnerName)}</strong></td>
+                  <td class="sc sc3">${e(r.parcelNumber)}</td>
+                  <td class="sc sc4">${e(r.farmBlockName)}</td>
+                  <td class="sc sc5">${this.categoryBadge(r.category)}</td>
+                  ${gridCols.map((c) => CYCLE_ACTIVITIES.map((a, i) => {
+                    const qty = this.cycleQty(r, a, c.keys);
                     const base = this.cycleBase(r, a);
-                    return this.cycleCellHtml(base > 0 ? (qty / base) * 100 : null, qty, a.unit);
+                    let td = this.cycleCellHtml(base > 0 ? (qty / base) * 100 : null, qty, a.unit);
+                    if (i === 0) td = td.replace('<td style="', '<td style="border-left:2px solid var(--border);');
+                    if (c.total) td = td.replace('<td ', '<td class="col-total" ');
+                    return td;
                   }).join('')).join('')}
                 </tr>`).join('')}
             </tbody>
@@ -407,6 +444,8 @@ Object.assign(FarmOpsApp.prototype, {
     const e = (v) => this.esc(v);
     const shown = st.period === 'ALL' ? data.periods : data.periods.filter((p) => p.key === st.period);
     const keys = shown.map((p) => p.key);
+    const cols = shown.map((p) => ({ label: p.label, keys: [p.key] }));
+    if (st.period === 'ALL') cols.push({ label: `Total ${st.year}`, keys });
     const rows = data.rows.filter((r) =>
       (st.category === 'ALL' || r.category === st.category) && (st.landOwner === 'ALL' || r.landOwnerName === st.landOwner));
     if (!rows.length) { this.showToast('Nothing to export.', 'warning'); return; }
@@ -428,17 +467,17 @@ Object.assign(FarmOpsApp.prototype, {
 
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head><meta charset="UTF-8"></head><body>
-      <h3>Cycle Monitoring ${e(st.year)}</h3>
+      <h3>Cycle Monitoring ${e(st.year)} (January to December)</h3>
       <table border="1">
         <tr>
           <th rowspan="2" ${head}>No.</th><th rowspan="2" ${head}>Landowner Name</th><th rowspan="2" ${head}>Parcel</th>
           <th rowspan="2" ${head}>Farm &amp; Block</th><th rowspan="2" ${head}>Category</th>
-          ${shown.map((p) => `<th colspan="${CYCLE_ACTIVITIES.length}" ${head}>${e(p.label)}</th>`).join('')}
+          ${cols.map((c) => `<th colspan="${CYCLE_ACTIVITIES.length}" ${head}>${e(c.label)}</th>`).join('')}
         </tr>
-        <tr>${shown.map(() => CYCLE_ACTIVITIES.map((a) => `<th ${head}>${e(a.label)}</th>`).join('')).join('')}</tr>
+        <tr>${cols.map(() => CYCLE_ACTIVITIES.map((a) => `<th ${head}>${e(a.label)}</th>`).join('')).join('')}</tr>
         ${rows.map((r) => `<tr>
           <td>${r.landOwnerNo || ''}</td><td>${e(r.landOwnerName)}</td><td>${e(r.parcelNumber)}</td><td>${e(r.farmBlockName)}</td><td>${e(r.category)}</td>
-          ${shown.map((p) => CYCLE_ACTIVITIES.map((a) => `<td style="text-align:center;">${cell(r, a, [p.key])}</td>`).join('')).join('')}
+          ${cols.map((c) => CYCLE_ACTIVITIES.map((a) => `<td style="text-align:center;">${cell(r, a, c.keys)}</td>`).join('')).join('')}
         </tr>`).join('')}
       </table>
       <br/>
