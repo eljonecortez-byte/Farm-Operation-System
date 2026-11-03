@@ -5,7 +5,16 @@ A complete, professional, mobile-responsive **Farm Operations Monitoring & KPI M
 
 ---
 
-## 🆕 What's new in v3.1.0
+## 🆕 What's new in v3.2.0
+
+- **Land Owner No. & Category** – Land Owner Enrollment now has a **Land Owner No.** (next free number is suggested, must be unique) and a **Category: Priority / Not Priority**. Area (Ha) and Palm Count can be entered per Farm & Block; ✏️ edits them later.
+- **Cycle Monitoring** (new menu item, new file `js/cycle.js`) – a table per Land Owner › Parcel › Farm & Block › Category with **Slashing, Round Weeding, Compost Application and Soil Drenching %** per month (or per Cycle), like the monthly spreadsheet. Percent = work done ÷ block size (Slashing by Area Ha, the others by Palm Count); 100% = whole block done once.
+  - **Summary per Farm** (blocks named "Farm 1 Block 1", "Farm 1 Block 2" are grouped as "Farm 1") and **Summary per Farm & Block** with quantities.
+  - Filters: year, month/cycle, category, land owner, search. **Export to Excel**.
+  - Administrators see everything; Supervisors and Field Personnel only their assigned Farm & Blocks. A *Cycle Progress* card for the current month is shown on the dashboard.
+- `index.html` loads `js/cycle.js` after `js/app.js`.
+
+## What's new in v3.1.0
 
 - **Add New Activity** – Administrators can create new activity modules from *Register Activity › + Add New Activity*: name, icon, description and your own fields (Number, Text, Dropdown, Date, with units). Each new activity gets its own Google Sheet tab (`ACT_<name>`), appears in the hub, in User Management (assign it to users), in KPI targets (choose a *KPI Measure* number field), in Reports and in Excel/CSV exports. Edit ✏️ or deactivate 🚫 it from its card; old reports are always kept.
 - **Map upload fixed** – upload **KML, KMZ (Google Earth) or GeoJSON**. The file is checked before upload (number of shapes, size). Large maps (up to ~3 MB) are stored across several rows of the new `MapChunks` sheet, so the 50,000-character cell limit no longer blocks uploads. Lines (roads) and points (wells) are drawn too. Name each shape after its Farm & Block so assigned blocks are highlighted.
@@ -82,7 +91,8 @@ Attendance System/
 │   ├── db.js             # IndexedDB wrapper (FarmOpsDB with 12 stores & seed data)
 │   ├── auth.js           # Web Crypto SHA-256 hashing, session & access control
 │   ├── sync.js           # Background & manual sync engine, device telemetry & queue
-│   └── app.js            # Controller, router (20 pages), cascading dropdowns, charts, maps, QR
+│   ├── app.js            # Controller, router, cascading dropdowns, charts, maps, QR
+│   └── cycle.js          # Cycle Monitoring (per land owner / farm / block / activity)
 │
 └── icons/
     └── icon.svg          # Tropical coconut palm tree vector icon & PWA maskable badge
