@@ -69,14 +69,16 @@ Object.assign(FarmOpsApp.prototype, {
     const allBlocks = (await db.getAll('farmsAndBlocks')).filter((b) => b.status !== 'Deactivated');
     const blocks = auth.hasAllBlocks() ? allBlocks : auth.getAuthorizedBlocks();
     const landowners = await db.getAll('landowners');
-    const loByName = new Map(landowners.map((l) => [String(l.landOwnerName).trim().toLowerCase(), l]));
+    // Land owners are identified by their ID / CLAIF Number (two owners may share a name)
+    const loById = new Map(landowners.map((l) => [String(l.landOwnerId), l]));
     const key = (lo, p, b) => [lo, p, b].map((v) => String(v == null ? '' : v).trim().toLowerCase()).join('|');
 
     const rows = blocks.map((b) => {
-      const lo = loByName.get(String(b.landOwnerName).trim().toLowerCase()) || {};
+      const lo = loById.get(String(b.landOwnerId)) || {};
       return {
         key: key(b.landOwnerName, b.parcelNumber, b.farmBlockName),
         blockId: b.blockId,
+        landOwnerId: String(b.landOwnerId || ''),
         landOwnerName: b.landOwnerName,
         landOwnerNo: String(lo.landOwnerNo || b.landOwnerNo || ''),   // CLAIF Number, e.g. CLAIF-686
         category: lo.category || b.category || 'Not Priority',
@@ -201,16 +203,18 @@ Object.assign(FarmOpsApp.prototype, {
       ? (st.groupBy === 'cycle' ? `All cycles ${st.year}` : `January – December ${st.year}`)
       : `${shownPeriods[0].label} ${st.year}`;
 
-    const landOwnerNames = [...new Set(data.rows.map((r) => r.landOwnerName))].sort();
+    // Land owner filter: one entry per land owner (same names are told apart by CLAIF Number)
+    const ownerOptions = [...new Map(data.rows.map((r) => [r.landOwnerId, r])).values()]
+      .sort((a, b) => String(a.landOwnerName).localeCompare(String(b.landOwnerName)) || this.compareClaif(a.landOwnerNo, b.landOwnerNo));
     const rows = data.rows.filter((r) =>
       (st.category === 'ALL' || r.category === st.category) &&
-      (st.landOwner === 'ALL' || r.landOwnerName === st.landOwner));
+      (st.landOwner === 'ALL' || r.landOwnerId === st.landOwner));
     const missingSize = rows.filter((r) => !r.areaHa || !r.palmCount).length;
 
     // ---- Summary per Farm (Land Owner + Farm)
     const farms = new Map();
     rows.forEach((r) => {
-      const k = `${r.landOwnerName}|${r.farmName}`;
+      const k = `${r.landOwnerId}|${r.farmName}`;
       if (!farms.has(k)) farms.set(k, { landOwnerNo: r.landOwnerNo, landOwnerName: r.landOwnerName, farmName: r.farmName, category: r.category, rows: [] });
       farms.get(k).rows.push(r);
     });
@@ -254,7 +258,7 @@ Object.assign(FarmOpsApp.prototype, {
         </select>
         <select class="form-control" style="max-width:200px;" onchange="app.setCycleFilter('landOwner', this.value)">
           <option value="ALL">All land owners</option>
-          ${landOwnerNames.map((n) => `<option value="${e(n)}" ${n === st.landOwner ? 'selected' : ''}>${e(n)}</option>`).join('')}
+          ${ownerOptions.map((o) => `<option value="${e(o.landOwnerId)}" ${o.landOwnerId === st.landOwner ? 'selected' : ''}>${e(o.landOwnerName)}${o.landOwnerNo ? ` – ${e(o.landOwnerNo)}` : ''}</option>`).join('')}
         </select>
         <input type="text" id="cycle-search" class="form-control" placeholder="🔍 Search land owner, farm, block..." value="${e(st.search)}" oninput="app.filterCycleTables(this.value)" />
       </div>
@@ -455,7 +459,7 @@ Object.assign(FarmOpsApp.prototype, {
     const cols = shown.map((p) => ({ label: p.label, keys: [p.key] }));
     if (st.period === 'ALL') cols.push({ label: `Total ${st.year}`, keys });
     const rows = data.rows.filter((r) =>
-      (st.category === 'ALL' || r.category === st.category) && (st.landOwner === 'ALL' || r.landOwnerName === st.landOwner));
+      (st.category === 'ALL' || r.category === st.category) && (st.landOwner === 'ALL' || r.landOwnerId === st.landOwner));
     if (!rows.length) { this.showToast('Nothing to export.', 'warning'); return; }
 
     const pctText = (p) => (p === null ? '' : `${Math.round(p)}%`);
@@ -468,7 +472,7 @@ Object.assign(FarmOpsApp.prototype, {
 
     const farms = new Map();
     rows.forEach((r) => {
-      const k = `${r.landOwnerName}|${r.farmName}`;
+      const k = `${r.landOwnerId}|${r.farmName}`;
       if (!farms.has(k)) farms.set(k, { r, rows: [] });
       farms.get(k).rows.push(r);
     });
