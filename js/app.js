@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '3.9.0';
+const FRONTEND_VERSION = '4.0.0';
 
 class FarmOpsApp {
   constructor() {
@@ -52,6 +52,7 @@ class FarmOpsApp {
     if (user) {
       this.showAppLayout();
       await this.navigateTo('dashboard');
+      this.joStart();
       this.checkMapVersionNotification();
       if (navigator.onLine) {
         syncService.syncPendingRecords().finally(() => this.backgroundRefresh());
@@ -123,6 +124,7 @@ class FarmOpsApp {
   async backgroundRefresh() {
     if (!navigator.onLine || !auth.getToken() || auth.getCurrentUser().isOfflineSession) return;
     const result = await syncService.refreshFromServer();
+    this.joSync(true);   // job orders + notifications
     if (result.success) {
       this.renderUserMetaHeader();
       if (['dashboard', 'daily-monitoring', 'reports', 'profile', 'farm-map'].includes(this.currentView)) {
@@ -438,6 +440,10 @@ class FarmOpsApp {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span>Daily Monitoring</span>
       </div>
+      <div class="nav-link ${this.currentView === 'job-orders' ? 'active' : ''}" onclick="app.navigateTo('job-orders')">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span>Job Orders</span>
+      </div>
       <div class="nav-link ${this.currentView === 'cycle-monitoring' ? 'active' : ''}" onclick="app.navigateTo('cycle-monitoring')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 15l2 2 4-4"/></svg>
         <span>Cycle Monitoring</span>
@@ -629,6 +635,16 @@ class FarmOpsApp {
         await this.renderCustomActivityForm(container, customActivityId);
         break;
 
+      case 'job-orders':
+        if (titleEl) titleEl.textContent = 'Job Orders';
+        await this.renderJobOrdersView(container);
+        break;
+
+      case 'notifications':
+        if (titleEl) titleEl.textContent = 'Notifications';
+        await this.renderNotificationsView(container);
+        break;
+
       case 'cycle-monitoring':
         if (titleEl) titleEl.textContent = 'Cycle Monitoring';
         await this.renderCycleMonitoringView(container);
@@ -788,6 +804,7 @@ class FarmOpsApp {
       this.showToast(result.message || 'Login successful!', 'success');
       this.showAppLayout();
       await this.navigateTo('dashboard');
+      this.joStart();
 
       if (result.mode === 'online') {
         if (result.user.mustChangePassword) this.openChangePasswordModal(true);
@@ -807,6 +824,8 @@ class FarmOpsApp {
   async handleLogout() {
     if (confirm('Are you sure you want to sign out? Your offline reports remain safe on this device.')) {
       await auth.logout();
+      this._jo = null;
+      this.joUpdateBell();
       this.showToast('You have been logged out.', 'info');
       this.showLoginView();
     }
@@ -1050,6 +1069,7 @@ class FarmOpsApp {
     // Cycle progress for this month (only the user's Farm & Blocks)
     await this.renderCycleDashboardCard(container);
     try { await this.renderSequenceDashboardCard(container); } catch (err) { console.warn('[Dashboard] sequence summary', err); }
+    try { await this.renderJobOrderDashboardCard(container); } catch (err) { console.warn('[Dashboard] job orders', err); }
   }
 
   /* ==========================================================================
@@ -5218,6 +5238,7 @@ class FarmOpsApp {
     const res = await syncService.syncPendingRecords();
     this.showToast(res.message || res.error, res.success ? 'success' : 'warning');
     if (res.success) this.backgroundRefresh();
+    else this.joSync(true);
   }
 
   /* ==========================================================================
@@ -5496,7 +5517,8 @@ class FarmOpsApp {
     if (m) m.classList.remove('active');
     if (modalId === 'form-modal') {
       const btn = document.getElementById('form-modal-submit-btn');
-      if (btn) { btn.textContent = 'Save'; btn.disabled = false; btn.className = 'btn btn-primary'; }
+      if (btn) { btn.textContent = 'Save'; btn.disabled = false; btn.className = 'btn btn-primary'; btn.style.display = ''; }
+      this._joOpen = null;
       this._userModal = null;
     }
 
