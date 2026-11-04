@@ -28,6 +28,14 @@ const CYCLE_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
 
 Object.assign(FarmOpsApp.prototype, {
 
+  /** Sort CLAIF Numbers by their number part: CLAIF-9 before CLAIF-686. Empty ones go last. */
+  compareClaif(a, b) {
+    const sa = String(a || ''), sb = String(b || '');
+    if (!sa || !sb) return sa ? -1 : (sb ? 1 : 0);
+    const na = parseInt((sa.match(/(\d+)$/) || [])[1], 10), nb = parseInt((sb.match(/(\d+)$/) || [])[1], 10);
+    return (isNaN(na) || isNaN(nb) ? 0 : na - nb) || sa.localeCompare(sb);
+  },
+
   /** "Farm 1 Block 1" -> "Farm 1".  A name without the word "Block" is its own farm. */
   farmNameOf(blockName) {
     const name = String(blockName || '').trim();
@@ -70,7 +78,7 @@ Object.assign(FarmOpsApp.prototype, {
         key: key(b.landOwnerName, b.parcelNumber, b.farmBlockName),
         blockId: b.blockId,
         landOwnerName: b.landOwnerName,
-        landOwnerNo: parseInt(lo.landOwnerNo || b.landOwnerNo, 10) || 0,
+        landOwnerNo: String(lo.landOwnerNo || b.landOwnerNo || ''),   // CLAIF Number, e.g. CLAIF-686
         category: lo.category || b.category || 'Not Priority',
         parcelNumber: b.parcelNumber,
         farmBlockName: b.farmBlockName,
@@ -116,7 +124,7 @@ Object.assign(FarmOpsApp.prototype, {
     }
 
     rows.sort((a, b) =>
-      (a.landOwnerNo || 9999) - (b.landOwnerNo || 9999) ||
+      this.compareClaif(a.landOwnerNo, b.landOwnerNo) ||
       String(a.landOwnerName).localeCompare(String(b.landOwnerName)) ||
       String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }) ||
       String(a.farmBlockName).localeCompare(String(b.farmBlockName), undefined, { numeric: true }));
@@ -279,11 +287,11 @@ Object.assign(FarmOpsApp.prototype, {
           .cycle-table .sc { position:sticky; z-index:2; background:var(--bg-surface, #fff); white-space:normal; padding-left:10px; padding-right:10px; }
           .cycle-table thead .sc { background:#f8fafc; z-index:3; }
           .cycle-table tbody tr:hover .sc { background:var(--bg-hover, #f1f5f9); }
-          .cycle-table .sc1 { left:0; min-width:44px; max-width:44px; }
-          .cycle-table .sc2 { left:44px; min-width:140px; max-width:140px; }
-          .cycle-table .sc3 { left:184px; min-width:72px; max-width:72px; }
-          .cycle-table .sc4 { left:256px; min-width:140px; max-width:140px; }
-          .cycle-table .sc5 { left:396px; min-width:112px; max-width:112px; box-shadow:2px 0 0 var(--border); }
+          .cycle-table .sc1 { left:0; min-width:96px; max-width:96px; }
+          .cycle-table .sc2 { left:96px; min-width:140px; max-width:140px; }
+          .cycle-table .sc3 { left:236px; min-width:72px; max-width:72px; }
+          .cycle-table .sc4 { left:308px; min-width:140px; max-width:140px; }
+          .cycle-table .sc5 { left:448px; min-width:112px; max-width:112px; box-shadow:2px 0 0 var(--border); }
         }
       </style>
       <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px;">
@@ -297,7 +305,7 @@ Object.assign(FarmOpsApp.prototype, {
           <table class="table cycle-table" style="font-size:12.5px;">
             <thead>
               <tr>
-                <th rowspan="2" class="sc sc1">No.</th>
+                <th rowspan="2" class="sc sc1">CLAIF No.</th>
                 <th rowspan="2" class="sc sc2">Land Owner Name</th>
                 <th rowspan="2" class="sc sc3">Parcel</th>
                 <th rowspan="2" class="sc sc4">Farm &amp; Block</th>
@@ -311,7 +319,7 @@ Object.assign(FarmOpsApp.prototype, {
             <tbody>
               ${rows.map((r) => `
                 <tr class="cycle-row" data-search="${searchText(r)}">
-                  <td class="sc sc1">${r.landOwnerNo || '—'}</td>
+                  <td class="sc sc1">${e(r.landOwnerNo || '—')}</td>
                   <td class="sc sc2"><strong>${e(r.landOwnerName)}</strong></td>
                   <td class="sc sc3">${e(r.parcelNumber)}</td>
                   <td class="sc sc4">${e(r.farmBlockName)}</td>
@@ -342,14 +350,14 @@ Object.assign(FarmOpsApp.prototype, {
           <table class="table" style="font-size:12.5px;">
             <thead>
               <tr>
-                <th>No.</th><th>Land Owner</th><th>Farm</th><th>Category</th><th>Blocks</th><th>Area (Ha)</th><th>Palms</th>
+                <th>CLAIF No.</th><th>Land Owner</th><th>Farm</th><th>Category</th><th>Blocks</th><th>Area (Ha)</th><th>Palms</th>
                 ${CYCLE_ACTIVITIES.map((a) => `<th style="text-align:center;">${e(a.label)}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
               ${[...farms.values()].map((f) => `
                 <tr class="cycle-row" data-search="${e([f.landOwnerNo, f.landOwnerName, f.farmName, f.category, f.rows.map((r) => r.farmBlockName).join(' ')].join(' ').toLowerCase())}">
-                  <td>${f.landOwnerNo || '—'}</td>
+                  <td>${e(f.landOwnerNo || '—')}</td>
                   <td><strong>${e(f.landOwnerName)}</strong></td>
                   <td>${e(f.farmName)}</td>
                   <td>${this.categoryBadge(f.category)}</td>
@@ -384,14 +392,14 @@ Object.assign(FarmOpsApp.prototype, {
           <table class="table" style="font-size:12.5px;">
             <thead>
               <tr>
-                <th>No.</th><th>Land Owner</th><th>Parcel</th><th>Farm &amp; Block</th><th>Category</th><th>Area (Ha)</th><th>Palms</th>
+                <th>CLAIF No.</th><th>Land Owner</th><th>Parcel</th><th>Farm &amp; Block</th><th>Category</th><th>Area (Ha)</th><th>Palms</th>
                 ${CYCLE_ACTIVITIES.map((a) => `<th style="text-align:center;">${e(a.label)}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
               ${rows.map((r) => `
                 <tr class="cycle-row" data-search="${searchText(r)}">
-                  <td>${r.landOwnerNo || '—'}</td>
+                  <td>${e(r.landOwnerNo || '—')}</td>
                   <td><strong>${e(r.landOwnerName)}</strong></td>
                   <td>${e(r.parcelNumber)}</td>
                   <td>${e(r.farmBlockName)}</td>
@@ -470,23 +478,23 @@ Object.assign(FarmOpsApp.prototype, {
       <h3>Cycle Monitoring ${e(st.year)} (January to December)</h3>
       <table border="1">
         <tr>
-          <th rowspan="2" ${head}>No.</th><th rowspan="2" ${head}>Landowner Name</th><th rowspan="2" ${head}>Parcel</th>
+          <th rowspan="2" ${head}>CLAIF No.</th><th rowspan="2" ${head}>Landowner Name</th><th rowspan="2" ${head}>Parcel</th>
           <th rowspan="2" ${head}>Farm &amp; Block</th><th rowspan="2" ${head}>Category</th>
           ${cols.map((c) => `<th colspan="${CYCLE_ACTIVITIES.length}" ${head}>${e(c.label)}</th>`).join('')}
         </tr>
         <tr>${cols.map(() => CYCLE_ACTIVITIES.map((a) => `<th ${head}>${e(a.label)}</th>`).join('')).join('')}</tr>
         ${rows.map((r) => `<tr>
-          <td>${r.landOwnerNo || ''}</td><td>${e(r.landOwnerName)}</td><td>${e(r.parcelNumber)}</td><td>${e(r.farmBlockName)}</td><td>${e(r.category)}</td>
+          <td>${e(r.landOwnerNo || '')}</td><td>${e(r.landOwnerName)}</td><td>${e(r.parcelNumber)}</td><td>${e(r.farmBlockName)}</td><td>${e(r.category)}</td>
           ${cols.map((c) => CYCLE_ACTIVITIES.map((a) => `<td style="text-align:center;">${cell(r, a, c.keys)}</td>`).join('')).join('')}
         </tr>`).join('')}
       </table>
       <br/>
       <h3>Summary per Farm</h3>
       <table border="1">
-        <tr><th ${head}>No.</th><th ${head}>Land Owner</th><th ${head}>Farm</th><th ${head}>Category</th><th ${head}>Blocks</th><th ${head}>Area (Ha)</th><th ${head}>Palms</th>
+        <tr><th ${head}>CLAIF No.</th><th ${head}>Land Owner</th><th ${head}>Farm</th><th ${head}>Category</th><th ${head}>Blocks</th><th ${head}>Area (Ha)</th><th ${head}>Palms</th>
           ${CYCLE_ACTIVITIES.map((a) => `<th ${head}>${e(a.label)}</th>`).join('')}</tr>
         ${[...farms.values()].map((f) => `<tr>
-          <td>${f.r.landOwnerNo || ''}</td><td>${e(f.r.landOwnerName)}</td><td>${e(f.r.farmName)}</td><td>${e(f.r.category)}</td><td>${f.rows.length}</td>
+          <td>${e(f.r.landOwnerNo || '')}</td><td>${e(f.r.landOwnerName)}</td><td>${e(f.r.farmName)}</td><td>${e(f.r.category)}</td><td>${f.rows.length}</td>
           <td>${f.rows.reduce((s, r) => s + r.areaHa, 0)}</td><td>${f.rows.reduce((s, r) => s + r.palmCount, 0)}</td>
           ${CYCLE_ACTIVITIES.map((a) => `<td style="text-align:center;">${pctText(this.cyclePercent(f.rows, a, keys))}</td>`).join('')}
         </tr>`).join('')}
@@ -494,10 +502,10 @@ Object.assign(FarmOpsApp.prototype, {
       <br/>
       <h3>Summary per Farm &amp; Block</h3>
       <table border="1">
-        <tr><th ${head}>No.</th><th ${head}>Land Owner</th><th ${head}>Parcel</th><th ${head}>Farm &amp; Block</th><th ${head}>Category</th><th ${head}>Area (Ha)</th><th ${head}>Palms</th>
+        <tr><th ${head}>CLAIF No.</th><th ${head}>Land Owner</th><th ${head}>Parcel</th><th ${head}>Farm &amp; Block</th><th ${head}>Category</th><th ${head}>Area (Ha)</th><th ${head}>Palms</th>
           ${CYCLE_ACTIVITIES.map((a) => `<th ${head}>${e(a.label)}</th>`).join('')}</tr>
         ${rows.map((r) => `<tr>
-          <td>${r.landOwnerNo || ''}</td><td>${e(r.landOwnerName)}</td><td>${e(r.parcelNumber)}</td><td>${e(r.farmBlockName)}</td><td>${e(r.category)}</td>
+          <td>${e(r.landOwnerNo || '')}</td><td>${e(r.landOwnerName)}</td><td>${e(r.parcelNumber)}</td><td>${e(r.farmBlockName)}</td><td>${e(r.category)}</td>
           <td>${r.areaHa || ''}</td><td>${r.palmCount || ''}</td>
           ${CYCLE_ACTIVITIES.map((a) => `<td style="text-align:center;">${cell(r, a, keys)}</td>`).join('')}
         </tr>`).join('')}
