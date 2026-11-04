@@ -5,6 +5,9 @@
  * interactive charts, offline maps, and QR code scanner.
  */
 
+// Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
+const FRONTEND_VERSION = '3.9.0';
+
 class FarmOpsApp {
   constructor() {
     this.currentView = 'dashboard';
@@ -3700,6 +3703,7 @@ class FarmOpsApp {
           <table class="table">
             <thead>
               <tr>
+                <th title="Permanent unique ID of this row">Record ID</th>
                 <th title="Sequence Number typed during enrollment (Priority and Not Priority are separate)">Seq.</th>
                 <th>CLAIF No.</th>
                 <th>Land Owner</th>
@@ -3715,7 +3719,7 @@ class FarmOpsApp {
             </thead>
             <tbody id="enr-table-body">
               ${blocks.length === 0 ? `
-                <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px;">
+                <tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:24px;">
                   No land owners enrolled yet. Use the form above to enroll the first one.</td></tr>` : blocks.map((b) => {
                   const lo = loOf(b);
                   const sup = (b.supervisorNames && b.supervisorNames.length) ? b.supervisorNames.join(', ') : '';
@@ -3730,7 +3734,7 @@ class FarmOpsApp {
                     lastGroup = group;
                     groupHeader = `
                 <tr class="enr-group" data-group="${group}">
-                  <td colspan="11" style="background:${group === 'P' ? '#fef2f2' : '#f0fdf4'};font-weight:800;font-size:12.5px;letter-spacing:0.5px;color:${group === 'P' ? '#991b1b' : '#166534'};">
+                  <td colspan="12" style="background:${group === 'P' ? '#fef2f2' : '#f0fdf4'};font-weight:800;font-size:12.5px;letter-spacing:0.5px;color:${group === 'P' ? '#991b1b' : '#166534'};">
                     ${group === 'P' ? '⭐ PRIORITY' : 'NOT PRIORITY'} &bull; <span class="enr-group-count">${group === 'P' ? priorityCount : notPriorityCount}</span> sequence(s)
                   </td>
                 </tr>`;
@@ -3738,20 +3742,23 @@ class FarmOpsApp {
                   return `${groupHeader}
                 <tr class="enr-row" data-group="${group}" data-fb="${e(fbCode)}" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
                     data-priority="${group === 'P' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}" data-noseq="${seq ? '0' : '1'}"
-                    data-search="${e([seqLabel, lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
+                    data-search="${e([b.recordId, seqLabel, lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
+                  <td style="white-space:nowrap;"><code style="font-size:11.5px;">${e(b.recordId || '—')}</code></td>
                   <td style="white-space:nowrap;"><strong>${seqLabel || '<span style="color:#92400e;">not set</span>'}</strong></td>
                   <td style="white-space:nowrap;"><strong>${e(lo.landOwnerNo || '—')}</strong></td>
                   <td><strong>${e(b.landOwnerName)}</strong></td>
                   <td>${this.categoryBadge(this.entryCategory(b, lo))}</td>
                   <td>${e(b.parcelNumber)}</td>
-                  <td>${e(b.farmBlockName)} <span style="font-size:11px;color:var(--text-light);" title="Record ID">${e(b.blockId)}</span></td>
+                  <td>${e(b.farmBlockName)}</td>
                   <td>${b.areaHa ? e(b.areaHa) : '<span style="color:#92400e;">—</span>'}</td>
                   <td>${b.palmCount ? e(b.palmCount) : '<span style="color:#92400e;">—</span>'}</td>
                   <td>${sup ? `👤 ${e(sup)}` : `<span class="badge badge-behind">Unassigned</span>`}</td>
                   <td><span class="badge ${active ? 'badge-completed' : 'badge-behind'}">${active ? 'Active' : 'Deactivated'}</span></td>
                   <td style="white-space:nowrap;">
-                    <button class="btn btn-outline btn-icon" title="Edit this entry (${e(b.blockId)})" onclick="app.openEditEnrollmentModal('${e(b.blockId)}')">✏️</button>
-                    <button class="btn btn-danger btn-icon" title="Delete this entry (${e(b.blockId)})" onclick="app.confirmDeleteEntry('${e(b.blockId)}')">🗑️</button>
+                    ${b.recordId ? `
+                    <button class="btn btn-outline btn-icon" title="Edit this entry (${e(b.recordId)})" onclick="app.openEditEnrollmentModal('${e(b.recordId)}')">✏️</button>
+                    <button class="btn btn-danger btn-icon" title="Delete this entry (${e(b.recordId)})" onclick="app.confirmDeleteEntry('${e(b.recordId)}')">🗑️</button>` : `
+                    <span class="badge badge-behind" title="This row has no Record ID yet. Deploy the new Code.gs (New version), then refresh.">no Record ID</span>`}
                     ${active
                       ? `<button class="btn btn-danger btn-icon" title="Deactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Deactivated')">🚫</button>`
                       : `<button class="btn btn-outline btn-icon" title="Reactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Active')">♻️</button>`}
@@ -3765,8 +3772,27 @@ class FarmOpsApp {
     `;
 
     this._enr = { landowners, blocks, parcels, existing: null, rowId: 0, seqOf };
+    this.checkServerVersion(container);
     this.addEnrollmentEntry(false);
     this.filterEnrollmentTable();
+  }
+
+  /** Warns when the Apps Script server and this app are not the same version (old cache or old deployment). */
+  async checkServerVersion(container) {
+    if (!navigator.onLine) return;
+    try {
+      const r = await syncService.apiCall('PING');
+      if (r && r.version && r.version !== FRONTEND_VERSION && container.isConnected) {
+        container.insertAdjacentHTML('afterbegin', `
+          <div class="card" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;margin-bottom:16px;font-size:13.5px;">
+            <strong>⚠️ Version mismatch:</strong> this app is v${this.esc(FRONTEND_VERSION)} but the server (Code.gs) is v${this.esc(r.version)}.
+            Editing land owners is blocked until both are the same.
+            ${r.version < FRONTEND_VERSION
+              ? 'Paste the new Code.gs into Apps Script, then Deploy › Manage deployments › ✏️ › Version: <strong>New version</strong> › Deploy.'
+              : 'This app is an old copy: close it and open it again (or press Ctrl+Shift+R).'}
+          </div>`);
+      }
+    } catch (err) { /* offline or server unreachable: nothing to show */ }
   }
 
   /** Category of ONE sequence entry (v3.8). Older entries without one fall back to the land owner's old category. */
@@ -4105,7 +4131,7 @@ class FarmOpsApp {
       btn.disabled = true;
       btn.textContent = 'Saving...';
       try {
-        const result = await syncService.apiCall('ENROLL_LANDOWNER', { enrollment });
+        const result = await syncService.apiCall('ENROLL_LANDOWNER', { enrollment, clientVersion: FRONTEND_VERSION });
         try { await syncService.pullMasterData(); } catch (err) { console.warn(err); }
         this.closeModal('form-modal');
         this.showToast(result.message || 'Land owner enrolled.', 'success');
@@ -4151,9 +4177,15 @@ class FarmOpsApp {
    * Edit ONE parcel / farm & block entry, identified only by its Record ID (Block ID).
    * Other entries of the same land owner / CLAIF Number are never changed here.
    */
-  async openEditEnrollmentModal(blockId) {
-    const block = await db.get('farmsAndBlocks', blockId);
-    if (!block) { this.showToast('This entry was not found. Please refresh.', 'error'); return; }
+  /** The ONE entry with this Record ID (REC-xxxx) on this device. */
+  async getEntryByRecordId(recordId) {
+    const hits = (await db.getAll('farmsAndBlocks')).filter((b) => String(b.recordId || '') === String(recordId));
+    return hits.length === 1 ? hits[0] : null;
+  }
+
+  async openEditEnrollmentModal(recordId) {
+    const block = await this.getEntryByRecordId(recordId);
+    if (!block) { this.showToast(`Entry ${recordId} was not found. Please refresh.`, 'error'); return; }
     const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerId) === String(block.landOwnerId)) || {};
     const allBlocks = await db.getAll('farmsAndBlocks');
     const siblings = allBlocks.filter((b) => String(b.landOwnerId) === String(block.landOwnerId) && b.blockId !== block.blockId);
@@ -4164,13 +4196,23 @@ class FarmOpsApp {
     const currentSeq = parseInt(block.sequenceNo, 10) || parseInt(lo.sequenceNo, 10) || '';
     const cat = this.entryCategory(block, lo);   // THIS sequence's own category
 
-    document.getElementById('form-modal-title').textContent = `Edit Entry ${block.blockId}`;
+    document.getElementById('form-modal-title').textContent = `Edit Entry ${block.recordId}`;
     document.getElementById('form-modal-body').innerHTML = `
       <div style="background:var(--palm-subtle);border:1px solid var(--palm-border);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:14px;font-size:13px;">
-        <div><strong>Record ID:</strong> <code>${e(block.blockId)}</code> &nbsp;•&nbsp; <strong>${e(lo.landOwnerNo || '—')}</strong> &nbsp;•&nbsp; ${e(block.landOwnerName)}</div>
+        <div><strong>Record ID:</strong> <code>${e(block.recordId)}</code> &nbsp;•&nbsp; ${e(block.parcelNumber)} › ${e(block.farmBlockName)}</div>
         <div class="form-helper" style="margin-top:4px;">Only this entry is changed. ${siblings.length ? `The other ${siblings.length} entr${siblings.length === 1 ? 'y' : 'ies'} of ${e(lo.landOwnerNo || block.landOwnerName)} stay as they are.` : ''}</div>
         ${lo.landOwnerId ? `<button type="button" class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12.5px;"
            onclick="app.openEditLandownerProfileModal('${e(lo.landOwnerId)}')">🏡 Edit land owner profile (CLAIF, name)…</button>` : ''}
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">CLAIF Number</label>
+          <input type="text" class="form-control" value="${e(lo.landOwnerNo || '—')}" readonly style="background:#f1f5f9;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Land Owner Name</label>
+          <input type="text" class="form-control" value="${e(block.landOwnerName)}" readonly style="background:#f1f5f9;" />
+        </div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -4231,13 +4273,15 @@ class FarmOpsApp {
       if (area && !/^\d+(\.\d+)?$/.test(area)) { this.showToast('Area must be a number.', 'warning'); return; }
       if (palms && !/^\d+$/.test(palms)) { this.showToast('Palm Count must be a whole number.', 'warning'); return; }
       const moved = newParcel.toLowerCase() !== String(block.parcelNumber).toLowerCase() || newBlock !== block.farmBlockName;
-      if (moved && !confirm(`Change entry ${block.blockId} from ${block.parcelNumber} › ${block.farmBlockName} to ${newParcel} › ${newBlock}?\nOnly this entry and its own reports are updated.`)) return;
+      if (moved && !confirm(`Change entry ${block.recordId} from ${block.parcelNumber} › ${block.farmBlockName} to ${newParcel} › ${newBlock}?\nOnly this entry and its own reports are updated.`)) return;
 
       btn.disabled = true;
       btn.textContent = 'Saving...';
       try {
         const r = await syncService.apiCall('UPDATE_BLOCK', {
-          blockId: block.blockId,          // the Record ID — the only thing used to find the entry
+          recordId: block.recordId,        // the ONLY key used to find the row (REC-xxxx)
+          blockId: block.blockId,          // cross-check: the server refuses if it does not belong to that Record ID
+          clientVersion: FRONTEND_VERSION,
           category: document.getElementById('ed-category').value,   // this sequence only
           sequenceNo: newSeq,
           parcelNumber: newParcel,
@@ -4303,6 +4347,7 @@ class FarmOpsApp {
       btn.disabled = true;
       try {
         const r = await syncService.apiCall('UPDATE_LANDOWNER', {
+          clientVersion: FRONTEND_VERSION,
           landOwnerId: lo.landOwnerId,
           landOwnerNo: document.getElementById('lp-no').value,
           landOwnerName: name,
@@ -4323,9 +4368,10 @@ class FarmOpsApp {
   }
 
   /** Delete ONE entry (by Record ID) after a confirmation that shows exactly what is deleted. */
-  async confirmDeleteEntry(blockId) {
-    const block = await db.get('farmsAndBlocks', blockId);
-    if (!block) { this.showToast('This entry was not found. Please refresh.', 'error'); return; }
+  async confirmDeleteEntry(recordId) {
+    const block = await this.getEntryByRecordId(recordId);
+    if (!block) { this.showToast(`Entry ${recordId} was not found. Please refresh.`, 'error'); return; }
+    const blockId = block.blockId;
     const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerId) === String(block.landOwnerId)) || {};
     const others = (await db.getAll('farmsAndBlocks')).filter((b) => String(b.landOwnerId) === String(block.landOwnerId) && b.blockId !== blockId).length;
     const e = (v) => this.esc(v);
@@ -4337,7 +4383,7 @@ class FarmOpsApp {
       <div class="table-responsive">
         <table class="table">
           <tbody>
-            <tr><th style="width:140px;">Record ID</th><td><code>${e(block.blockId)}</code></td></tr>
+            <tr><th style="width:140px;">Record ID</th><td><code>${e(block.recordId)}</code></td></tr>
             <tr><th>Sequence</th><td>${seq ? `${this.entryCategory(block, lo) === 'Priority' ? 'P-' : 'NP-'}${seq}` : '—'}</td></tr>
             <tr><th>Category</th><td>${this.categoryBadge(this.entryCategory(block, lo))}</td></tr>
             <tr><th>CLAIF Number</th><td>${e(lo.landOwnerNo || '—')}</td></tr>
@@ -4362,7 +4408,7 @@ class FarmOpsApp {
       btn.disabled = true;
       btn.textContent = 'Deleting...';
       try {
-        const r = await syncService.apiCall('DELETE_BLOCK', { blockId: block.blockId });
+        const r = await syncService.apiCall('DELETE_BLOCK', { recordId: block.recordId, blockId: block.blockId, clientVersion: FRONTEND_VERSION });
         await syncService.pullMasterData();
         this.closeModal('form-modal');
         this.showToast(r.message || 'Entry deleted.', 'success');
