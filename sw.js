@@ -1,5 +1,5 @@
 // Service Worker for Coconut Farm Operations & KPI Management System
-const CACHE_NAME = 'farmops-kpi-v4.0.1';
+const CACHE_NAME = 'farmops-kpi-v4.1.0';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -11,6 +11,7 @@ const ASSETS_TO_CACHE = [
   './js/app.js',
   './js/cycle.js',
   './js/jo.js',
+  './js/weather.js',
   './manifest.json',
   './icons/icon.svg'
 ];
