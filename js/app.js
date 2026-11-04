@@ -19,6 +19,15 @@ class FarmOpsApp {
   async init() {
     console.log('[App] Initializing Farm Operations System...');
 
+    // Wide tables scroll inside their own box instead of stretching the whole page (phones)
+    if (!document.getElementById('farmops-layout-fix')) {
+      document.head.insertAdjacentHTML('beforeend',
+        '<style id="farmops-layout-fix">#main-content, #view-content-root { min-width: 0; }' +
+        '@media (max-width: 540px) { .top-bar-left { min-width: 0; } .top-bar-right { gap: 6px; }' +
+        ' #page-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
+        ' #quick-sync-btn span, #gps-status-pill span { display: none; } }</style>');
+    }
+
     // 1. Initialize IndexedDB
     await db.init();
 
@@ -3523,8 +3532,11 @@ class FarmOpsApp {
   }
 
   /* ==========================================================================
-     LAND OWNER ENROLLMENT (ADMIN ONLY)
-     Land Owner Name -> Parcel Number -> Farm & Block.
+     LAND OWNER ENROLLMENT (ADMIN ONLY) — Manual Sequential Enrollment (v3.5)
+     1) Land owner: CLAIF Number, Land Owner Name, Category.
+     2) One or more parcel / block entries, each with a Sequence Number that is
+        TYPED by the admin. Sequence numbers are never generated, incremented
+        or renumbered by the app.
      The supervisor of each Farm & Block is found automatically from User Management.
      ========================================================================== */
 
@@ -3535,26 +3547,17 @@ class FarmOpsApp {
     const e = (v) => this.esc(v);
     const loByName = new Map(landowners.map((l) => [String(l.landOwnerName).toLowerCase(), l]));
     const loOf = (b) => loByName.get(String(b.landOwnerName).toLowerCase()) || {};
-    const claifPrefix = 'CLAIF-';
-
-    // Sequence No.: typed by the admin, counted separately for Priority (P-1, P-2...) and Not Priority (NP-1, NP-2...)
     const isPriority = (lo) => lo && lo.category === 'Priority';
-    const seqOf = new Map();
-    let pSeq = 0, nSeq = 0;
-    const nextSeq = { 'Priority': 1, 'Not Priority': 1 };
-    landowners.filter((l) => l.status !== 'Deactivated').forEach((l) => {
-      const n = parseInt(l.sequenceNo, 10) || 0;
-      if (n) seqOf.set(String(l.landOwnerName).toLowerCase(), n);
-      const cat = isPriority(l) ? 'Priority' : 'Not Priority';
-      if (cat === 'Priority') pSeq++; else nSeq++;
-      nextSeq[cat] = Math.max(nextSeq[cat], n + 1);
-    });
-    const seqOfBlock = (b) => seqOf.get(String(b.landOwnerName).toLowerCase()) || 9999;
+    const activeOwners = landowners.filter((l) => l.status !== 'Deactivated');
+    const priorityCount = activeOwners.filter(isPriority).length;
+    const notPriorityCount = activeOwners.length - priorityCount;
+    // Sequence shown = the number typed for the block (older records: the land owner's saved number)
+    const seqOf = (b) => parseInt(b.sequenceNo, 10) || parseInt(loOf(b).sequenceNo, 10) || 0;
 
-    // Priority first, then Not Priority; inside each group by enrollment sequence
+    // Priority first, then Not Priority; inside each group by the typed sequence number
     blocks.sort((a, b) =>
       (isPriority(loOf(a)) ? 0 : 1) - (isPriority(loOf(b)) ? 0 : 1) ||
-      seqOfBlock(a) - seqOfBlock(b) ||
+      (seqOf(a) || 999999) - (seqOf(b) || 999999) ||
       String(a.landOwnerName).localeCompare(String(b.landOwnerName)) ||
       String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }) ||
       String(a.farmBlockName).localeCompare(String(b.farmBlockName), undefined, { numeric: true })
@@ -3562,22 +3565,44 @@ class FarmOpsApp {
 
     const activeCount = blocks.filter((b) => b.status !== 'Deactivated').length;
     const unassigned = blocks.filter((b) => b.status !== 'Deactivated' && (!b.supervisorNames || !b.supervisorNames.length)).length;
-    const priorityCount = pSeq;
-    const notPriorityCount = nSeq;
     let lastGroup = '';
 
     container.innerHTML = `
+      <style>
+        .enr-entries-head, .enr-entry { display: grid; grid-template-columns: 130px 1fr 1.4fr 110px 110px 44px; gap: 10px; align-items: end; }
+        .enr-entries-head { font-size: 12px; font-weight: 700; color: var(--text-muted); padding: 0 12px 6px; }
+        .enr-entry { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; background: var(--bg-surface); }
+        .enr-entry .form-group { margin: 0; }
+        .enr-entry .enr-cell-label { display: none; font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; }
+        .enr-rm-text { display: none; }
+        .enr-entry.has-error { border-color: var(--alert-red); background: #fef2f2; }
+        .enr-seq-wrap { display: flex; align-items: center; gap: 6px; }
+        .enr-seq-wrap span { font-weight: 800; min-width: 30px; color: var(--palm-dark); }
+        .enr-existing { background: var(--palm-subtle); border: 1px solid var(--palm-border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px; }
+        .enr-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+        @media (max-width: 760px) {
+          .enr-entries-head { display: none; }
+          .enr-entry { grid-template-columns: 1fr 1fr; }
+          .enr-entry .enr-cell-label { display: block; }
+          .enr-entry .enr-cell-block { grid-column: 1 / -1; }
+          .enr-entry .enr-cell-remove { grid-column: 1 / -1; }
+          .enr-entry .enr-cell-remove .btn { width: 100%; }
+          .enr-rm-text { display: inline; }
+          .enr-actions .btn { flex: 1 1 140px; }
+        }
+      </style>
+
       <div style="margin-bottom: 20px;">
         <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Land Owner Enrollment</h2>
         <p style="font-size: 13.5px; color: var(--text-muted);">
-          Enroll a land owner with its number, category, parcel and farm &amp; block. The supervisor is filled in automatically
-          from User Management. Area and palm count are used for Cycle Monitoring percentages.
+          Enroll a land owner, then add each parcel / farm &amp; block with its own Sequence Number (typed by you).
+          The supervisor is filled in automatically from User Management. Area and palm count are used for Cycle Monitoring.
         </p>
       </div>
 
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-icon green">🏡</div><div class="stat-info">
-          <div class="stat-label">Land Owners</div><div class="stat-value">${landowners.filter((l) => l.status !== 'Deactivated').length}</div>
+          <div class="stat-label">Land Owners</div><div class="stat-value">${activeOwners.length}</div>
           <div class="stat-sub">${priorityCount} Priority &bull; ${notPriorityCount} Not Priority</div></div></div>
         <div class="stat-card"><div class="stat-icon blue">🗂️</div><div class="stat-info">
           <div class="stat-label">Parcels</div><div class="stat-value">${parcels.filter((p) => p.status !== 'Deactivated').length}</div></div></div>
@@ -3592,76 +3617,53 @@ class FarmOpsApp {
         <div class="card-header">
           <div>
             <div class="card-title">➕ Enroll Land Owner</div>
-            <div class="card-subtitle">Typing an existing land owner fills in its number and category. Separate several blocks with commas.</div>
+            <div class="card-subtitle">Enter an existing CLAIF Number to add more parcels / blocks to that land owner.</div>
           </div>
         </div>
-        <form id="enroll-form" onsubmit="event.preventDefault(); app.submitLandownerEnrollment();">
-          <div class="form-grid-2">
+        <form id="enroll-form" onsubmit="event.preventDefault(); app.reviewLandownerEnrollment();" novalidate>
+          <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">1. Land Owner Information</div>
+          <div class="form-grid-3">
             <div class="form-group">
               <label class="form-label required">CLAIF Number</label>
-              <input type="text" id="enr-no" class="form-control" maxlength="30" value="${claifPrefix}"
-                     placeholder="e.g. CLAIF-686" required autocapitalize="characters" title="Word and number, e.g. CLAIF-686" />
-              <div class="form-helper">Word and number, e.g. CLAIF-686. Must be unique.</div>
+              <input type="text" id="enr-no" class="form-control" maxlength="30" value="CLAIF-"
+                     placeholder="e.g. CLAIF-686" autocapitalize="characters" autocomplete="off"
+                     oninput="app.lookupEnrollmentClaif()" />
+              <div class="form-helper" id="enr-no-help">Word and number, e.g. CLAIF-686. Must be unique.</div>
             </div>
             <div class="form-group">
               <label class="form-label required">Land Owner Name</label>
-              <input type="text" id="enr-landowner" class="form-control" list="enr-landowner-list" maxlength="120"
-                     placeholder="e.g. Onal Sumpo" required oninput="app.updateEnrollmentParcelList()" />
-              <datalist id="enr-landowner-list">
-                ${landowners.map((l) => `<option value="${e(l.landOwnerName)}"></option>`).join('')}
-              </datalist>
+              <input type="text" id="enr-landowner" class="form-control" maxlength="120" autocomplete="off"
+                     placeholder="e.g. Onal Sumpo" oninput="app.lookupEnrollmentName()" />
+              <div class="form-helper" id="enr-name-help"></div>
             </div>
-          </div>
-          <div class="form-grid-2">
             <div class="form-group">
               <label class="form-label required">Category</label>
-              <select id="enr-category" class="form-control" onchange="app.updateEnrollmentSequence()">
+              <select id="enr-category" class="form-control" onchange="app.updateEnrollmentPrefixes()">
                 <option value="Not Priority">Not Priority</option>
                 <option value="Priority">Priority</option>
               </select>
             </div>
-            <div class="form-group">
-              <label class="form-label required">Sequence No.</label>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span id="enr-seq-prefix" style="font-weight:700;min-width:34px;">NP-</span>
-                <input type="number" id="enr-seq" class="form-control" min="1" step="1" value="${nextSeq['Not Priority']}" required />
-              </div>
-              <div class="form-helper" id="enr-seq-help">Next free: NP-${nextSeq['Not Priority']}. Priority and Not Priority are counted separately.</div>
-            </div>
           </div>
-          <div class="form-grid-2">
-            <div class="form-group">
-              <label class="form-label required">Parcel Number</label>
-              <input type="text" id="enr-parcel" class="form-control" list="enr-parcel-list" maxlength="120"
-                     placeholder="e.g. P1" required />
-              <datalist id="enr-parcel-list"></datalist>
-            </div>
-            <div class="form-group">
-              <label class="form-label required">Farm &amp; Block</label>
-              <input type="text" id="enr-block" class="form-control" maxlength="500"
-                     placeholder="e.g. Farm 1 Block 1 (or Farm 1 Block 1, Farm 1 Block 2)" required oninput="app.updateEnrollmentSizeFields()" />
-            </div>
+
+          <div id="enr-existing"></div>
+
+          <div style="font-weight:700;color:var(--palm-dark);margin:6px 0 8px;">2. Parcel / Farm &amp; Block Entries</div>
+          <div class="enr-entries-head">
+            <div>Sequence No. *</div><div>Parcel Number *</div><div>Farm &amp; Block *</div><div>Area (Ha)</div><div>Palm Count</div><div></div>
           </div>
-          <div class="form-grid-2">
-            <div class="form-group">
-              <label class="form-label">Area (Ha)</label>
-              <input type="number" id="enr-area" class="form-control" min="0" step="0.01" placeholder="e.g. 4.5" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Palm Count</label>
-              <input type="number" id="enr-palms" class="form-control" min="0" step="1" placeholder="e.g. 640" />
-            </div>
-          </div>
-          <div id="enr-size-hint" class="form-helper" style="margin-top:-6px;">Area and palm count are for one block. For several blocks, set them later with ✏️.</div>
-          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-            <button type="reset" class="btn btn-outline" onclick="setTimeout(() => app.updateEnrollmentSequence(), 0)">Clear</button>
-            <button type="submit" id="enr-submit" class="btn btn-primary">✓ Enroll</button>
+          <div id="enr-entries"></div>
+          <div class="form-helper">Type each Sequence Number yourself — any number, gaps allowed (e.g. 1, 2, 5, 8). The app never changes it.</div>
+
+          <div class="enr-actions">
+            <button type="button" class="btn btn-outline" onclick="app.addEnrollmentEntry()">➕ Add Another Block</button>
+            <button type="button" class="btn btn-outline" onclick="app.clearEnrollmentForm()">Clear</button>
+            <button type="submit" id="enr-submit" class="btn btn-primary">✓ Finish Enrollment</button>
           </div>
         </form>
       </div>
 
       <div class="filter-toolbar">
-        <input type="text" id="enr-search" class="form-control" placeholder="🔍 Search CLAIF no., land owner, parcel, block or supervisor..." oninput="app.filterEnrollmentTable()" />
+        <input type="text" id="enr-search" class="form-control" placeholder="🔍 Search seq., CLAIF no., land owner, parcel, block or supervisor..." oninput="app.filterEnrollmentTable()" />
         <select id="enr-status" class="form-control" onchange="app.filterEnrollmentTable()">
           <option value="Active">Active only</option>
           <option value="ALL">All statuses</option>
@@ -3670,6 +3672,7 @@ class FarmOpsApp {
           <option value="PRIORITY">Priority only</option>
           <option value="NOTPRIORITY">Not Priority only</option>
           <option value="NOSIZE">Missing area / palms</option>
+          <option value="NOSEQ">Missing sequence no.</option>
         </select>
       </div>
 
@@ -3678,7 +3681,7 @@ class FarmOpsApp {
           <table class="table">
             <thead>
               <tr>
-                <th title="Enrollment sequence, counted separately for Priority and Not Priority">Seq.</th>
+                <th title="Sequence Number typed during enrollment (Priority and Not Priority are separate)">Seq.</th>
                 <th>CLAIF No.</th>
                 <th>Land Owner</th>
                 <th>Category</th>
@@ -3700,7 +3703,8 @@ class FarmOpsApp {
                   const active = b.status !== 'Deactivated';
                   const noSize = !b.areaHa || !b.palmCount;
                   const group = isPriority(lo) ? 'P' : 'N';
-                  const seq = seqOf.get(String(b.landOwnerName).toLowerCase());
+                  const seq = seqOf(b);
+                  const seqLabel = seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '';
                   let groupHeader = '';
                   if (group !== lastGroup) {
                     lastGroup = group;
@@ -3713,9 +3717,9 @@ class FarmOpsApp {
                   }
                   return `${groupHeader}
                 <tr class="enr-row" data-group="${group}" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
-                    data-priority="${group === 'P' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}"
-                    data-search="${e([seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '', lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
-                  <td style="white-space:nowrap;"><strong>${seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '<span style="color:#92400e;">not set</span>'}</strong></td>
+                    data-priority="${group === 'P' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}" data-noseq="${seq ? '0' : '1'}"
+                    data-search="${e([seqLabel, lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
+                  <td style="white-space:nowrap;"><strong>${seqLabel || '<span style="color:#92400e;">not set</span>'}</strong></td>
                   <td style="white-space:nowrap;"><strong>${e(lo.landOwnerNo || '—')}</strong></td>
                   <td><strong>${e(b.landOwnerName)}</strong></td>
                   <td>${this.categoryBadge(lo.category)}</td>
@@ -3726,7 +3730,7 @@ class FarmOpsApp {
                   <td>${sup ? `👤 ${e(sup)}` : `<span class="badge badge-behind">Unassigned</span>`}</td>
                   <td><span class="badge ${active ? 'badge-completed' : 'badge-behind'}">${active ? 'Active' : 'Deactivated'}</span></td>
                   <td style="white-space:nowrap;">
-                    <button class="btn btn-outline btn-icon" title="Edit number, category, area, palms" onclick="app.openEditEnrollmentModal('${e(b.blockId)}')">✏️</button>
+                    <button class="btn btn-outline btn-icon" title="Edit sequence, number, category, parcel, area, palms" onclick="app.openEditEnrollmentModal('${e(b.blockId)}')">✏️</button>
                     ${active
                       ? `<button class="btn btn-danger btn-icon" title="Deactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Deactivated')">🚫</button>`
                       : `<button class="btn btn-outline btn-icon" title="Reactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Active')">♻️</button>`}
@@ -3739,53 +3743,288 @@ class FarmOpsApp {
       </div>
     `;
 
-    this._enrollParcels = parcels;
-    this._enrollLandowners = landowners;
-    this._enrollNextNo = claifPrefix;
-    this._enrollNextSeq = nextSeq;
+    this._enr = { landowners, blocks, parcels, existing: null, rowId: 0, seqOf };
+    this.addEnrollmentEntry(false);
     this.filterEnrollmentTable();
   }
 
-  updateEnrollmentParcelList() {
-    const lo = (document.getElementById('enr-landowner').value || '').trim().toLowerCase();
-    const list = document.getElementById('enr-parcel-list');
-    if (!list) return;
-    const parcels = (this._enrollParcels || []).filter((p) => String(p.landOwnerName).toLowerCase() === lo);
-    list.innerHTML = parcels.map((p) => `<option value="${this.esc(p.parcelNumber)}"></option>`).join('');
-
-    // Existing land owner: show its number and category
-    const existing = (this._enrollLandowners || []).find((l) => String(l.landOwnerName).toLowerCase() === lo);
-    const noEl = document.getElementById('enr-no');
-    const catEl = document.getElementById('enr-category');
-    if (existing) {
-      if (existing.landOwnerNo) noEl.value = existing.landOwnerNo;
-      catEl.value = existing.category === 'Priority' ? 'Priority' : 'Not Priority';
-      this.updateEnrollmentSequence(existing);
-    } else if (this._enrollFilledFromExisting) {
-      noEl.value = this._enrollNextNo;
-      this.updateEnrollmentSequence();
-    }
-    this._enrollFilledFromExisting = !!existing;
+  /** Same rule as the server: "claif 686" / "CLAIF686" -> "CLAIF-686" ('' if not valid). */
+  normalizeClaifInput(v) {
+    const s = String(v || '').toUpperCase().replace(/[\s_]+/g, '-').replace(/-+/g, '-').trim();
+    const m = s.match(/^([A-Z]+)-?(\d+)$/);
+    return m ? `${m[1]}-${m[2]}` : '';
   }
 
-  /** Shows P- / NP- and fills the next free Sequence No. for the chosen category (or the land owner's own number). */
-  updateEnrollmentSequence(existing = null) {
-    const cat = document.getElementById('enr-category').value;
-    const prefix = cat === 'Priority' ? 'P-' : 'NP-';
-    const next = (this._enrollNextSeq || {})[cat] || 1;
-    const seqEl = document.getElementById('enr-seq');
-    document.getElementById('enr-seq-prefix').textContent = prefix;
-    document.getElementById('enr-seq-help').textContent = `Next free: ${prefix}${next}. Priority and Not Priority are counted separately.`;
-    seqEl.value = existing && existing.sequenceNo && existing.category === cat ? existing.sequenceNo : next;
+  enrollmentPrefix() {
+    return document.getElementById('enr-category')?.value === 'Priority' ? 'P-' : 'NP-';
   }
 
-  updateEnrollmentSizeFields() {
-    const many = document.getElementById('enr-block').value.split(',').filter((s) => s.trim()).length > 1;
-    ['enr-area', 'enr-palms'].forEach((id) => {
-      const el = document.getElementById(id);
-      el.disabled = many;
-      if (many) el.value = '';
+  /** One parcel / block entry row. Sequence is always typed by the user (starts empty). */
+  addEnrollmentEntry(focus = true) {
+    const box = document.getElementById('enr-entries');
+    if (!box || !this._enr) return;
+    const id = ++this._enr.rowId;
+    const row = document.createElement('div');
+    row.className = 'enr-entry';
+    row.dataset.row = String(id);
+    row.innerHTML = `
+      <div class="form-group">
+        <div class="enr-cell-label">Sequence No. *</div>
+        <div class="enr-seq-wrap"><span class="enr-seq-prefix">${this.enrollmentPrefix()}</span>
+          <input type="text" class="form-control enr-f-seq" inputmode="numeric" maxlength="6" placeholder="e.g. 1" autocomplete="off" />
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="enr-cell-label">Parcel Number *</div>
+        <input type="text" class="form-control enr-f-parcel" maxlength="120" placeholder="e.g. P1" autocomplete="off" />
+      </div>
+      <div class="form-group enr-cell-block">
+        <div class="enr-cell-label">Farm &amp; Block *</div>
+        <input type="text" class="form-control enr-f-block" maxlength="120" placeholder="e.g. Farm 1 Block 1" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <div class="enr-cell-label">Area (Ha)</div>
+        <input type="text" class="form-control enr-f-area" inputmode="decimal" maxlength="12" placeholder="e.g. 4.5" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <div class="enr-cell-label">Palm Count</div>
+        <input type="text" class="form-control enr-f-palms" inputmode="numeric" maxlength="9" placeholder="e.g. 640" autocomplete="off" />
+      </div>
+      <div class="enr-cell-remove">
+        <button type="button" class="btn btn-danger btn-icon" title="Remove this entry" onclick="app.removeEnrollmentEntry(${id})">✕<span class="enr-rm-text"> Remove</span></button>
+      </div>`;
+    // Numbers only: digits for sequence / palms, digits and one dot for area
+    row.querySelector('.enr-f-seq').addEventListener('input', (ev) => { ev.target.value = ev.target.value.replace(/\D/g, ''); });
+    row.querySelector('.enr-f-palms').addEventListener('input', (ev) => { ev.target.value = ev.target.value.replace(/\D/g, ''); });
+    row.querySelector('.enr-f-area').addEventListener('input', (ev) => {
+      ev.target.value = ev.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
     });
+    row.addEventListener('input', () => row.classList.remove('has-error'));
+    box.appendChild(row);
+    if (focus) row.querySelector('.enr-f-seq').focus();
+  }
+
+  /** Removes one entry. Other entries (and their sequence numbers) are left exactly as typed. */
+  removeEnrollmentEntry(id) {
+    const rows = [...document.querySelectorAll('#enr-entries .enr-entry')];
+    const row = rows.find((r) => r.dataset.row === String(id));
+    if (!row) return;
+    if (rows.length === 1) {
+      row.querySelectorAll('input').forEach((i) => { i.value = ''; });
+      row.classList.remove('has-error');
+      return;
+    }
+    row.remove();
+  }
+
+  clearEnrollmentForm() {
+    const anything = [...document.querySelectorAll('#enroll-form input')].some((i) => i.value.trim() && i.value.trim().toUpperCase() !== 'CLAIF-');
+    if (anything && !confirm('Clear the land owner and all entries?')) return;
+    document.getElementById('enr-no').value = 'CLAIF-';
+    document.getElementById('enr-landowner').value = '';
+    document.getElementById('enr-category').value = 'Not Priority';
+    document.getElementById('enr-entries').innerHTML = '';
+    this.setEnrollmentExisting(null);
+    document.getElementById('enr-name-help').textContent = '';
+    this.addEnrollmentEntry(false);
+  }
+
+  updateEnrollmentPrefixes() {
+    const p = this.enrollmentPrefix();
+    document.querySelectorAll('#enr-entries .enr-seq-prefix').forEach((s) => { s.textContent = p; });
+  }
+
+  /** Existing CLAIF Number: load the land owner and show its saved parcels / blocks. */
+  lookupEnrollmentClaif() {
+    if (!this._enr) return;
+    const claif = this.normalizeClaifInput(document.getElementById('enr-no').value);
+    const lo = claif ? this._enr.landowners.find((l) => String(l.landOwnerNo || '').toUpperCase() === claif) : null;
+    this.setEnrollmentExisting(lo || null);
+  }
+
+  /** Typing a name that already has a CLAIF Number offers to load that land owner. */
+  lookupEnrollmentName() {
+    if (!this._enr || this._enr.existing) return;
+    const name = document.getElementById('enr-landowner').value.trim().toLowerCase();
+    const help = document.getElementById('enr-name-help');
+    const lo = name ? this._enr.landowners.find((l) => String(l.landOwnerName).toLowerCase() === name) : null;
+    if (lo && lo.landOwnerNo) {
+      help.innerHTML = `Already enrolled as <strong>${this.esc(lo.landOwnerNo)}</strong> —
+        <a href="#" onclick="event.preventDefault(); document.getElementById('enr-no').value='${this.esc(lo.landOwnerNo)}'; app.lookupEnrollmentClaif();">use it</a>`;
+    } else if (lo) {
+      help.textContent = 'Existing land owner without a CLAIF Number: this CLAIF Number will be saved to it.';
+    } else {
+      help.textContent = '';
+    }
+  }
+
+  setEnrollmentExisting(lo) {
+    const st = this._enr;
+    if (!st) return;
+    const wasExisting = !!st.existing;
+    st.existing = lo;
+    const nameEl = document.getElementById('enr-landowner');
+    const catEl = document.getElementById('enr-category');
+    const box = document.getElementById('enr-existing');
+    const help = document.getElementById('enr-no-help');
+    if (!lo) {
+      if (wasExisting) { nameEl.value = ''; catEl.value = 'Not Priority'; }
+      nameEl.readOnly = false;
+      catEl.disabled = false;
+      box.innerHTML = '';
+      help.textContent = 'Word and number, e.g. CLAIF-686. Must be unique.';
+      this.updateEnrollmentPrefixes();
+      return;
+    }
+    nameEl.value = lo.landOwnerName;
+    nameEl.readOnly = true;
+    catEl.value = lo.category === 'Priority' ? 'Priority' : 'Not Priority';
+    catEl.disabled = true;
+    document.getElementById('enr-name-help').textContent = '';
+    help.innerHTML = '✔ Existing land owner. New entries will be <strong>added</strong>; saved records are not changed.';
+    this.updateEnrollmentPrefixes();
+
+    const e = (v) => this.esc(v);
+    const prefix = lo.category === 'Priority' ? 'P-' : 'NP-';
+    const own = st.blocks.filter((b) => String(b.landOwnerName).toLowerCase() === String(lo.landOwnerName).toLowerCase())
+      .sort((a, b) => (st.seqOf(a) || 999999) - (st.seqOf(b) || 999999) ||
+        String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }));
+    box.innerHTML = `
+      <div class="enr-existing">
+        <div style="font-weight:700;margin-bottom:8px;">📋 Existing records of ${e(lo.landOwnerName)} (${e(lo.landOwnerNo)}) &bull; ${own.length} block(s)</div>
+        ${own.length ? `
+        <div class="table-responsive">
+          <table class="table" style="background:var(--bg-surface);">
+            <thead><tr><th>Seq.</th><th>Parcel</th><th>Farm &amp; Block</th><th>Area (Ha)</th><th>Palms</th><th>Status</th></tr></thead>
+            <tbody>${own.map((b) => `
+              <tr>
+                <td><strong>${st.seqOf(b) ? prefix + st.seqOf(b) : '—'}</strong></td>
+                <td>${e(b.parcelNumber)}</td>
+                <td>${e(b.farmBlockName)}</td>
+                <td>${b.areaHa ? e(b.areaHa) : '—'}</td>
+                <td>${b.palmCount ? e(b.palmCount) : '—'}</td>
+                <td><span class="badge ${b.status !== 'Deactivated' ? 'badge-completed' : 'badge-behind'}">${b.status !== 'Deactivated' ? 'Active' : 'Deactivated'}</span></td>
+              </tr>`).join('')}</tbody>
+          </table>
+        </div>` : '<div class="form-helper">No parcels / blocks yet.</div>'}
+      </div>`;
+  }
+
+  /** Reads and checks the form. Returns { enrollment, errors }. */
+  collectLandownerEnrollment() {
+    const st = this._enr || {};
+    const errors = [];
+    const rawNo = document.getElementById('enr-no').value;
+    const claif = this.normalizeClaifInput(rawNo);
+    const name = document.getElementById('enr-landowner').value.trim();
+    const category = document.getElementById('enr-category').value;
+    if (!claif) errors.push('CLAIF Number must be a word and a number, e.g. CLAIF-686.');
+    if (!name) errors.push('Land Owner Name is required.');
+    if (!st.existing && name) {
+      const other = (st.landowners || []).find((l) => String(l.landOwnerName).toLowerCase() === name.toLowerCase() && l.landOwnerNo);
+      if (other) errors.push(`"${other.landOwnerName}" is already enrolled as ${other.landOwnerNo}. Enter that CLAIF Number to add blocks.`);
+    }
+
+    // Parcels already used by this land owner (active blocks)
+    const ownerName = (st.existing ? st.existing.landOwnerName : name).toLowerCase();
+    const usedParcels = new Set((st.blocks || [])
+      .filter((b) => String(b.landOwnerName).toLowerCase() === ownerName && b.status !== 'Deactivated')
+      .map((b) => String(b.parcelNumber).trim().toLowerCase()));
+
+    const seen = new Set();
+    const entries = [];
+    document.querySelectorAll('#enr-entries .enr-entry').forEach((row) => {
+      const get = (c) => row.querySelector(c).value.trim();
+      const en = {
+        sequenceNo: get('.enr-f-seq'),
+        parcelNumber: get('.enr-f-parcel').replace(/\s+/g, ' '),
+        farmBlock: get('.enr-f-block').replace(/\s+/g, ' '),
+        areaHa: get('.enr-f-area'),
+        palmCount: get('.enr-f-palms')
+      };
+      row.classList.remove('has-error');
+      if (!Object.values(en).some(Boolean)) return;    // empty row: ignored
+      const n = entries.length + 1;
+      const rowErr = [];
+      if (!en.sequenceNo) rowErr.push('Sequence Number is required');
+      else if (!/^\d+$/.test(en.sequenceNo) || parseInt(en.sequenceNo, 10) < 1) rowErr.push('Sequence Number must be a whole number');
+      if (!en.parcelNumber) rowErr.push('Parcel Number is required');
+      if (!en.farmBlock) rowErr.push('Farm & Block is required');
+      if (en.areaHa && !/^\d+(\.\d+)?$/.test(en.areaHa)) rowErr.push('Area must be a number');
+      if (en.palmCount && !/^\d+$/.test(en.palmCount)) rowErr.push('Palm Count must be a whole number');
+      const pk = en.parcelNumber.toLowerCase();
+      if (pk && seen.has(pk)) rowErr.push(`Parcel ${en.parcelNumber} is entered twice`);
+      else if (pk && usedParcels.has(pk)) rowErr.push(`Parcel ${en.parcelNumber} is already enrolled under this land owner`);
+      if (pk) seen.add(pk);
+      if (rowErr.length) {
+        row.classList.add('has-error');
+        errors.push(`Entry ${n}: ${rowErr.join(', ')}.`);
+      }
+      entries.push(en);
+    });
+    if (!entries.length) errors.push('Add at least one parcel / block entry.');
+
+    return {
+      errors,
+      enrollment: { landOwnerNo: claif || rawNo, landOwnerName: name, category, entries },
+      isExisting: !!st.existing
+    };
+  }
+
+  /** Finish Enrollment: check everything, then show a review table before saving. */
+  reviewLandownerEnrollment() {
+    const { errors, enrollment, isExisting } = this.collectLandownerEnrollment();
+    if (errors.length) {
+      this.showToast(errors.slice(0, 3).join(' ') + (errors.length > 3 ? ` (+${errors.length - 3} more)` : ''), 'warning');
+      return;
+    }
+    const e = (v) => this.esc(v);
+    const prefix = enrollment.category === 'Priority' ? 'P-' : 'NP-';
+    document.getElementById('form-modal-title').textContent = 'Review Enrollment';
+    document.getElementById('form-modal-body').innerHTML = `
+      <div class="form-grid-3" style="margin-bottom:12px;">
+        <div><div class="form-helper">CLAIF Number</div><strong>${e(enrollment.landOwnerNo)}</strong></div>
+        <div><div class="form-helper">Land Owner Name</div><strong>${e(enrollment.landOwnerName)}</strong></div>
+        <div><div class="form-helper">Category</div>${this.categoryBadge(enrollment.category)}</div>
+      </div>
+      <div class="form-helper" style="margin-bottom:8px;">${isExisting
+        ? 'Existing land owner: these entries will be <strong>added</strong>. Saved records stay as they are.'
+        : 'New land owner.'}</div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead><tr><th>Sequence</th><th>Parcel Number</th><th>Farm &amp; Block</th><th>Area (Ha)</th><th>Palm Count</th></tr></thead>
+          <tbody>${enrollment.entries.map((en) => `
+            <tr>
+              <td><strong>${prefix}${e(en.sequenceNo)}</strong></td>
+              <td>${e(en.parcelNumber)}</td>
+              <td>${e(en.farmBlock)}</td>
+              <td>${en.areaHa ? e(en.areaHa) : '—'}</td>
+              <td>${en.palmCount ? e(en.palmCount) : '—'}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="form-helper" style="margin-top:8px;">${enrollment.entries.length} entr${enrollment.entries.length === 1 ? 'y' : 'ies'}. Sequence numbers are saved exactly as typed. Press Cancel to go back and edit.</div>
+    `;
+    const btn = document.getElementById('form-modal-submit-btn');
+    btn.textContent = '✓ Save Enrollment';
+    btn.disabled = false;
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const result = await syncService.apiCall('ENROLL_LANDOWNER', { enrollment });
+        try { await syncService.pullMasterData(); } catch (err) { console.warn(err); }
+        this.closeModal('form-modal');
+        this.showToast(result.message || 'Land owner enrolled.', 'success');
+        this.navigateTo('landowner-enrollment');
+      } catch (err) {
+        this.showToast(err.message, 'error');   // the form keeps everything typed
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✓ Save Enrollment';
+      }
+    };
+    this.openModal('form-modal');
   }
 
   filterEnrollmentTable() {
@@ -3801,6 +4040,7 @@ class FarmOpsApp {
       else if (st === 'PRIORITY') matchStatus = active && row.dataset.priority === '1';
       else if (st === 'NOTPRIORITY') matchStatus = active && row.dataset.priority === '0';
       else if (st === 'NOSIZE') matchStatus = active && row.dataset.nosize === '1';
+      else if (st === 'NOSEQ') matchStatus = active && row.dataset.noseq === '1';
       row.style.display = matchText && matchStatus ? '' : 'none';
     });
     // Hide a Priority / Not Priority heading when none of its rows are shown
@@ -3810,32 +4050,7 @@ class FarmOpsApp {
     });
   }
 
-  async submitLandownerEnrollment() {
-    const btn = document.getElementById('enr-submit');
-    const enrollment = {
-      landOwnerNo: document.getElementById('enr-no').value,
-      landOwnerName: document.getElementById('enr-landowner').value.trim(),
-      category: document.getElementById('enr-category').value,
-      sequenceNo: document.getElementById('enr-seq').value,
-      parcelNumber: document.getElementById('enr-parcel').value.trim(),
-      farmBlocks: document.getElementById('enr-block').value.split(',').map((s) => s.trim()).filter(Boolean),
-      areaHa: document.getElementById('enr-area').value,
-      palmCount: document.getElementById('enr-palms').value
-    };
-    if (!enrollment.landOwnerName || !enrollment.parcelNumber || !enrollment.farmBlocks.length) {
-      this.showToast('Land Owner Name, Parcel Number and Farm & Block are required.', 'warning');
-      return;
-    }
-    btn.disabled = true;
-    btn.textContent = 'Enrolling...';
-    await this.runServerAction('ENROLL_LANDOWNER', { enrollment }, 'Land owner enrolled.', 'landowner-enrollment');
-    if (document.getElementById('enr-submit')) {
-      document.getElementById('enr-submit').disabled = false;
-      document.getElementById('enr-submit').textContent = '✓ Enroll';
-    }
-  }
-
-  /** Edit land owner number / category and the block's area / palm count. */
+  /** Edit: land owner (CLAIF, category, name, phone) and this block (sequence, parcel, area, palms). */
   async openEditEnrollmentModal(blockId) {
     const block = await db.get('farmsAndBlocks', blockId);
     if (!block) return;
@@ -3844,14 +4059,7 @@ class FarmOpsApp {
       .filter((p) => String(p.landOwnerName).toLowerCase() === String(block.landOwnerName).toLowerCase() && p.status !== 'Deactivated')
       .map((p) => p.parcelNumber);
     const e = (v) => this.esc(v);
-
-    // Next free sequence per category, used when the category is changed in this window
-    const allOwners = await db.getAll('landowners');
-    this._editSeq = { original: lo, next: { 'Priority': 1, 'Not Priority': 1 } };
-    allOwners.filter((l) => l.status !== 'Deactivated' && l.landOwnerId !== lo.landOwnerId).forEach((l) => {
-      const cat = l.category === 'Priority' ? 'Priority' : 'Not Priority';
-      this._editSeq.next[cat] = Math.max(this._editSeq.next[cat], (parseInt(l.sequenceNo, 10) || 0) + 1);
-    });
+    const currentSeq = parseInt(block.sequenceNo, 10) || parseInt(lo.sequenceNo, 10) || '';
 
     document.getElementById('form-modal-title').textContent = `Edit: ${block.landOwnerName} › ${block.parcelNumber} › ${block.farmBlockName}`;
     document.getElementById('form-modal-body').innerHTML = `
@@ -3864,19 +4072,11 @@ class FarmOpsApp {
         </div>
         <div class="form-group">
           <label class="form-label">Category</label>
-          <select id="ed-category" class="form-control" onchange="app.updateEditSequence()">
+          <select id="ed-category" class="form-control" onchange="document.getElementById('ed-seq-prefix').textContent = this.value === 'Priority' ? 'P-' : 'NP-'">
             <option value="Not Priority" ${lo.category !== 'Priority' ? 'selected' : ''}>Not Priority</option>
             <option value="Priority" ${lo.category === 'Priority' ? 'selected' : ''}>Priority</option>
           </select>
         </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label required">Sequence No.</label>
-        <div style="display:flex;align-items:center;gap:8px;max-width:260px;">
-          <span id="ed-seq-prefix" style="font-weight:700;min-width:34px;">${lo.category === 'Priority' ? 'P-' : 'NP-'}</span>
-          <input type="number" id="ed-seq" class="form-control" min="1" step="1" value="${e(lo.sequenceNo || '')}" />
-        </div>
-        <div class="form-helper" id="ed-seq-help">Must be free inside its category (Priority or Not Priority).</div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -3890,11 +4090,22 @@ class FarmOpsApp {
         </div>
       </div>
       <div style="font-weight:700;color:var(--palm-dark);margin:6px 0 8px;">🌴 ${e(block.farmBlockName)}</div>
-      <div class="form-group">
-        <label class="form-label required">Parcel Number</label>
-        <input type="text" id="ed-parcel" class="form-control" maxlength="120" list="ed-parcel-list" value="${e(block.parcelNumber)}" />
-        <datalist id="ed-parcel-list">${ownerParcels.map((p) => `<option value="${e(p)}"></option>`).join('')}</datalist>
-        <div class="form-helper">Changing it moves only this Farm &amp; Block (and its reports) to that parcel.</div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label required">Sequence No.</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="ed-seq-prefix" style="font-weight:700;min-width:34px;">${lo.category === 'Priority' ? 'P-' : 'NP-'}</span>
+            <input type="text" id="ed-seq" class="form-control" inputmode="numeric" maxlength="6" value="${e(currentSeq)}"
+                   oninput="this.value = this.value.replace(/\\D/g, '')" />
+          </div>
+          <div class="form-helper">Typed by you. Saved exactly as entered.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label required">Parcel Number</label>
+          <input type="text" id="ed-parcel" class="form-control" maxlength="120" list="ed-parcel-list" value="${e(block.parcelNumber)}" />
+          <datalist id="ed-parcel-list">${ownerParcels.map((p) => `<option value="${e(p)}"></option>`).join('')}</datalist>
+          <div class="form-helper">Changing it moves only this Farm &amp; Block (and its reports) to that parcel.</div>
+        </div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -3913,8 +4124,13 @@ class FarmOpsApp {
     btn.onclick = async () => {
       const newName = document.getElementById('ed-name').value.trim();
       const newParcel = document.getElementById('ed-parcel').value.trim();
+      const newSeq = document.getElementById('ed-seq').value.trim();
       if (!newName || !newParcel) {
         this.showToast('Land Owner Name and Parcel Number cannot be empty.', 'warning');
+        return;
+      }
+      if (!/^\d+$/.test(newSeq) || parseInt(newSeq, 10) < 1) {
+        this.showToast('Type a Sequence No. (whole number, 1 or more).', 'warning');
         return;
       }
       const renamed = newName !== block.landOwnerName;
@@ -3932,7 +4148,6 @@ class FarmOpsApp {
             landOwnerId: lo.landOwnerId,
             landOwnerNo: document.getElementById('ed-no').value,
             category: document.getElementById('ed-category').value,
-            sequenceNo: document.getElementById('ed-seq').value,
             landOwnerName: newName,
             phone: document.getElementById('ed-phone').value
           });
@@ -3940,6 +4155,7 @@ class FarmOpsApp {
         }
         const r2 = await syncService.apiCall('UPDATE_BLOCK', {
           blockId,
+          sequenceNo: newSeq,
           parcelNumber: newParcel,
           areaHa: document.getElementById('ed-area').value,
           palmCount: document.getElementById('ed-palms').value
@@ -3957,20 +4173,6 @@ class FarmOpsApp {
       }
     };
     this.openModal('form-modal');
-  }
-
-  /** Edit window: when the category changes, show P- / NP- and suggest the next free number. */
-  updateEditSequence() {
-    const st = this._editSeq;
-    if (!st) return;
-    const cat = document.getElementById('ed-category').value;
-    const prefix = cat === 'Priority' ? 'P-' : 'NP-';
-    document.getElementById('ed-seq-prefix').textContent = prefix;
-    const sameAsBefore = (st.original.category === 'Priority' ? 'Priority' : 'Not Priority') === cat;
-    document.getElementById('ed-seq').value = sameAsBefore && st.original.sequenceNo ? st.original.sequenceNo : st.next[cat];
-    document.getElementById('ed-seq-help').textContent = sameAsBefore
-      ? 'Must be free inside its category (Priority or Not Priority).'
-      : `Moved to ${cat}: next free is ${prefix}${st.next[cat]}. You can type another free number.`;
   }
 
   async setBlockStatus(blockId, status) {
