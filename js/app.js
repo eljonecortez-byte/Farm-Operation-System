@@ -3537,8 +3537,23 @@ class FarmOpsApp {
     const loOf = (b) => loByName.get(String(b.landOwnerName).toLowerCase()) || {};
     const claifPrefix = 'CLAIF-';
 
+        // Enrollment sequence: separate numbering for Priority (1, 2, 3...) and Not Priority (1, 2, 3...),
+    // in the order the land owners were enrolled.
+    const isPriority = (lo) => lo && lo.category === 'Priority';
+    const seqOf = new Map();
+    const seqLandowners = landowners
+      .filter((l) => l.status !== 'Deactivated')
+      .sort((a, b) =>
+        String(a.dateEnrolled || '').localeCompare(String(b.dateEnrolled || '')) ||
+        String(a.landOwnerId).localeCompare(String(b.landOwnerId), undefined, { numeric: true }));
+    let pSeq = 0, nSeq = 0;
+    seqLandowners.forEach((l) => seqOf.set(String(l.landOwnerName).toLowerCase(), isPriority(l) ? ++pSeq : ++nSeq));
+    const seqOfBlock = (b) => seqOf.get(String(b.landOwnerName).toLowerCase()) || 9999;
+
+    // Priority first, then Not Priority; inside each group by enrollment sequence
     blocks.sort((a, b) =>
-      this.compareClaif(loOf(a).landOwnerNo, loOf(b).landOwnerNo) ||
+      (isPriority(loOf(a)) ? 0 : 1) - (isPriority(loOf(b)) ? 0 : 1) ||
+      seqOfBlock(a) - seqOfBlock(b) ||
       String(a.landOwnerName).localeCompare(String(b.landOwnerName)) ||
       String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }) ||
       String(a.farmBlockName).localeCompare(String(b.farmBlockName), undefined, { numeric: true })
