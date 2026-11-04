@@ -1046,6 +1046,7 @@ class FarmOpsApp {
 
     // Cycle progress for this month (only the user's Farm & Blocks)
     await this.renderCycleDashboardCard(container);
+    try { await this.renderSequenceDashboardCard(container); } catch (err) { console.warn('[Dashboard] sequence summary', err); }
   }
 
   /* ==========================================================================
@@ -3563,16 +3564,19 @@ class FarmOpsApp {
     // Land owners are identified by Land Owner ID / CLAIF Number — never by name
     const loById = new Map(landowners.map((l) => [String(l.landOwnerId), l]));
     const loOf = (b) => loById.get(String(b.landOwnerId)) || {};
-    const isPriority = (lo) => lo && lo.category === 'Priority';
+    // v3.8: Priority / Not Priority belongs to each sequence entry (block row), not to the land owner
+    const isPriority = (b) => this.entryCategory(b, loOf(b)) === 'Priority';
     const activeOwners = landowners.filter((l) => l.status !== 'Deactivated');
-    const priorityCount = activeOwners.filter(isPriority).length;
-    const notPriorityCount = activeOwners.length - priorityCount;
+    const activeEntries = blocks.filter((b) => b.status !== 'Deactivated');
+    const priorityCount = activeEntries.filter(isPriority).length;
+    const notPriorityCount = activeEntries.length - priorityCount;
+    const fbCatalog = this.buildFarmBlockCatalog(activeEntries);
     // Sequence shown = the number typed for the block (older records: the land owner's saved number)
     const seqOf = (b) => parseInt(b.sequenceNo, 10) || parseInt(loOf(b).sequenceNo, 10) || 0;
 
     // Priority first, then Not Priority; inside each group by the typed sequence number
     blocks.sort((a, b) =>
-      (isPriority(loOf(a)) ? 0 : 1) - (isPriority(loOf(b)) ? 0 : 1) ||
+      (isPriority(a) ? 0 : 1) - (isPriority(b) ? 0 : 1) ||
       (seqOf(a) || 999999) - (seqOf(b) || 999999) ||
       String(a.landOwnerName).localeCompare(String(b.landOwnerName)) ||
       String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }) ||
@@ -3585,7 +3589,7 @@ class FarmOpsApp {
 
     container.innerHTML = `
       <style>
-        .enr-entries-head, .enr-entry { display: grid; grid-template-columns: 130px 1fr 1.4fr 110px 110px 44px; gap: 10px; align-items: end; }
+        .enr-entries-head, .enr-entry { display: grid; grid-template-columns: 120px 140px 1fr 1.3fr 100px 100px 44px; gap: 10px; align-items: end; }
         .enr-entries-head { font-size: 12px; font-weight: 700; color: var(--text-muted); padding: 0 12px 6px; }
         .enr-entry { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; background: var(--bg-surface); }
         .enr-entry .form-group { margin: 0; }
@@ -3619,7 +3623,7 @@ class FarmOpsApp {
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-icon green">🏡</div><div class="stat-info">
           <div class="stat-label">Land Owners</div><div class="stat-value">${activeOwners.length}</div>
-          <div class="stat-sub">${priorityCount} Priority &bull; ${notPriorityCount} Not Priority</div></div></div>
+          <div class="stat-sub">${activeEntries.length} sequence(s): ${priorityCount} Priority &bull; ${notPriorityCount} Not Priority</div></div></div>
         <div class="stat-card"><div class="stat-icon blue">🗂️</div><div class="stat-info">
           <div class="stat-label">Parcels</div><div class="stat-value">${parcels.filter((p) => p.status !== 'Deactivated').length}</div></div></div>
         <div class="stat-card"><div class="stat-icon green">🌴</div><div class="stat-info">
@@ -3638,7 +3642,7 @@ class FarmOpsApp {
         </div>
         <form id="enroll-form" onsubmit="event.preventDefault(); app.reviewLandownerEnrollment();" novalidate>
           <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">1. Land Owner Information</div>
-          <div class="form-grid-3">
+          <div class="form-grid-2">
             <div class="form-group">
               <label class="form-label required">CLAIF Number</label>
               <input type="text" id="enr-no" class="form-control" maxlength="30" value="CLAIF-"
@@ -3652,23 +3656,16 @@ class FarmOpsApp {
                      placeholder="e.g. Onal Sumpo" oninput="app.lookupEnrollmentName()" />
               <div class="form-helper" id="enr-name-help"></div>
             </div>
-            <div class="form-group">
-              <label class="form-label required">Category</label>
-              <select id="enr-category" class="form-control" onchange="app.updateEnrollmentPrefixes()">
-                <option value="Not Priority">Not Priority</option>
-                <option value="Priority">Priority</option>
-              </select>
-            </div>
           </div>
 
           <div id="enr-existing"></div>
 
           <div style="font-weight:700;color:var(--palm-dark);margin:6px 0 8px;">2. Parcel / Farm &amp; Block Entries</div>
           <div class="enr-entries-head">
-            <div>Sequence No. *</div><div>Parcel Number *</div><div>Farm &amp; Block *</div><div>Area (Ha)</div><div>Palm Count</div><div></div>
+            <div>Sequence No. *</div><div>Category *</div><div>Parcel Number *</div><div>Farm &amp; Block *</div><div>Area (Ha)</div><div>Palm Count</div><div></div>
           </div>
           <div id="enr-entries"></div>
-          <div class="form-helper">Type each Sequence Number yourself — any number, gaps allowed (e.g. 1, 2, 5, 8). The app never changes it.</div>
+          <div class="form-helper">Type each Sequence Number yourself — any number, gaps allowed (e.g. 1, 2, 5, 8) — and choose Priority or Not Priority for each sequence. The app never changes them.</div>
 
           <div class="enr-actions">
             <button type="button" class="btn btn-outline" onclick="app.addEnrollmentEntry()">➕ Add Another Block</button>
@@ -3677,6 +3674,8 @@ class FarmOpsApp {
           </div>
         </form>
       </div>
+
+      ${this.sequenceSummaryHtml(activeEntries, true)}
 
       <div class="filter-toolbar">
         <input type="text" id="enr-search" class="form-control" placeholder="🔍 Search seq., CLAIF no., land owner, parcel, block or supervisor..." oninput="app.filterEnrollmentTable()" />
@@ -3689,6 +3688,10 @@ class FarmOpsApp {
           <option value="NOTPRIORITY">Not Priority only</option>
           <option value="NOSIZE">Missing area / palms</option>
           <option value="NOSEQ">Missing sequence no.</option>
+        </select>
+        <select id="enr-fb" class="form-control" onchange="app.filterEnrollmentTable()">
+          <option value="ALL">All Farm &amp; Blocks</option>
+          ${fbCatalog.farms.map((f) => f.blocks.map((c) => `<option value="${e(c.code)}">${e(c.full)}</option>`).join('')).join('')}
         </select>
       </div>
 
@@ -3718,7 +3721,8 @@ class FarmOpsApp {
                   const sup = (b.supervisorNames && b.supervisorNames.length) ? b.supervisorNames.join(', ') : '';
                   const active = b.status !== 'Deactivated';
                   const noSize = !b.areaHa || !b.palmCount;
-                  const group = isPriority(lo) ? 'P' : 'N';
+                  const group = isPriority(b) ? 'P' : 'N';
+                  const fbCode = this.farmBlockInfo(b).code;
                   const seq = seqOf(b);
                   const seqLabel = seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '';
                   let groupHeader = '';
@@ -3727,18 +3731,18 @@ class FarmOpsApp {
                     groupHeader = `
                 <tr class="enr-group" data-group="${group}">
                   <td colspan="11" style="background:${group === 'P' ? '#fef2f2' : '#f0fdf4'};font-weight:800;font-size:12.5px;letter-spacing:0.5px;color:${group === 'P' ? '#991b1b' : '#166534'};">
-                    ${group === 'P' ? '⭐ PRIORITY' : 'NOT PRIORITY'} &bull; ${group === 'P' ? priorityCount : notPriorityCount} land owner(s)
+                    ${group === 'P' ? '⭐ PRIORITY' : 'NOT PRIORITY'} &bull; <span class="enr-group-count">${group === 'P' ? priorityCount : notPriorityCount}</span> sequence(s)
                   </td>
                 </tr>`;
                   }
                   return `${groupHeader}
-                <tr class="enr-row" data-group="${group}" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
+                <tr class="enr-row" data-group="${group}" data-fb="${e(fbCode)}" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
                     data-priority="${group === 'P' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}" data-noseq="${seq ? '0' : '1'}"
                     data-search="${e([seqLabel, lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
                   <td style="white-space:nowrap;"><strong>${seqLabel || '<span style="color:#92400e;">not set</span>'}</strong></td>
                   <td style="white-space:nowrap;"><strong>${e(lo.landOwnerNo || '—')}</strong></td>
                   <td><strong>${e(b.landOwnerName)}</strong></td>
-                  <td>${this.categoryBadge(lo.category)}</td>
+                  <td>${this.categoryBadge(this.entryCategory(b, lo))}</td>
                   <td>${e(b.parcelNumber)}</td>
                   <td>${e(b.farmBlockName)} <span style="font-size:11px;color:var(--text-light);" title="Record ID">${e(b.blockId)}</span></td>
                   <td>${b.areaHa ? e(b.areaHa) : '<span style="color:#92400e;">—</span>'}</td>
@@ -3765,6 +3769,71 @@ class FarmOpsApp {
     this.filterEnrollmentTable();
   }
 
+  /** Category of ONE sequence entry (v3.8). Older entries without one fall back to the land owner's old category. */
+  entryCategory(b, lo) {
+    const c = b && b.category ? b.category : (lo && lo.category);
+    return c === 'Priority' ? 'Priority' : 'Not Priority';
+  }
+
+  /**
+   * "Sequences per Farm & Block" table: Priority / Not Priority / Total counted from individual
+   * sequence entries (not land owners). clickable = counts filter the enrollment table.
+   */
+  sequenceSummaryHtml(entries, clickable = false) {
+    const e = (v) => this.esc(v);
+    const catalog = this.buildFarmBlockCatalog(entries);
+    const count = new Map();
+    entries.forEach((b) => {
+      const code = this.farmBlockInfo(b).code;
+      const c = count.get(code) || { p: 0, n: 0 };
+      if (this.entryCategory(b) === 'Priority') c.p++; else c.n++;
+      count.set(code, c);
+    });
+    let tp = 0, tn = 0;
+    const link = (code, cat, n) => (clickable && n
+      ? `<a href="#" onclick="event.preventDefault(); app.showEnrollmentSequences('${e(code)}', '${cat}')">${n}</a>` : String(n));
+    const rows = catalog.farms.map((f) => f.blocks.map((blk) => {
+      const c = count.get(blk.code) || { p: 0, n: 0 };
+      tp += c.p; tn += c.n;
+      return `<tr class="seq-sum-row" data-search="${e(blk.full.toLowerCase())}">
+        <td><strong>${e(blk.full)}</strong></td>
+        <td style="text-align:center;color:#991b1b;font-weight:700;">${link(blk.code, 'PRIORITY', c.p)}</td>
+        <td style="text-align:center;color:#166534;font-weight:700;">${link(blk.code, 'NOTPRIORITY', c.n)}</td>
+        <td style="text-align:center;font-weight:800;">${link(blk.code, 'Active', c.p + c.n)}</td>
+      </tr>`;
+    }).join('')).join('');
+    if (!rows) return '';
+    return `
+      <div class="card" style="margin-bottom:20px;padding:0;overflow:hidden;">
+        <div class="card-header" style="padding:14px 16px 0;">
+          <div>
+            <div class="card-title">📊 Sequences per Farm &amp; Block</div>
+            <div class="card-subtitle">Counted per sequence entry, not per land owner.${clickable ? ' Tap a number to see those sequences below.' : ''}</div>
+          </div>
+        </div>
+        <div class="table-responsive" style="max-height:320px;overflow:auto;">
+          <table class="table">
+            <thead><tr><th>Farm &amp; Block</th><th style="text-align:center;">⭐ Priority</th><th style="text-align:center;">Not Priority</th><th style="text-align:center;">Total</th></tr></thead>
+            <tbody>${rows}</tbody>
+            <tfoot><tr style="background:var(--bg-hover);font-weight:800;">
+              <td>All Farm &amp; Blocks</td><td style="text-align:center;color:#991b1b;">${tp}</td><td style="text-align:center;color:#166534;">${tn}</td><td style="text-align:center;">${tp + tn}</td>
+            </tr></tfoot>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  /** From the summary: show only Priority / Not Priority / all sequences of one Farm & Block. */
+  showEnrollmentSequences(code, status) {
+    const fb = document.getElementById('enr-fb');
+    const st = document.getElementById('enr-status');
+    const q = document.getElementById('enr-search');
+    if (!fb || !st) return;
+    fb.value = code; st.value = status; if (q) q.value = '';
+    this.filterEnrollmentTable();
+    document.getElementById('enr-table-body')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   /** Same rule as the server: "claif 686" / "CLAIF686" -> "CLAIF-686" ('' if not valid). */
   normalizeClaifInput(v) {
     const s = String(v || '').toUpperCase().replace(/[\s_]+/g, '-').replace(/-+/g, '-').trim();
@@ -3772,8 +3841,9 @@ class FarmOpsApp {
     return m ? `${m[1]}-${m[2]}` : '';
   }
 
-  enrollmentPrefix() {
-    return document.getElementById('enr-category')?.value === 'Priority' ? 'P-' : 'NP-';
+  /** P- / NP- prefix of one entry row, from that row's own category. */
+  enrollmentPrefix(category) {
+    return category === 'Priority' ? 'P-' : (category === 'Not Priority' ? 'NP-' : '#');
   }
 
   /** One parcel / block entry row. Sequence is always typed by the user (starts empty). */
@@ -3787,9 +3857,17 @@ class FarmOpsApp {
     row.innerHTML = `
       <div class="form-group">
         <div class="enr-cell-label">Sequence No. *</div>
-        <div class="enr-seq-wrap"><span class="enr-seq-prefix">${this.enrollmentPrefix()}</span>
+        <div class="enr-seq-wrap"><span class="enr-seq-prefix">#</span>
           <input type="text" class="form-control enr-f-seq" inputmode="numeric" maxlength="6" placeholder="e.g. 1" autocomplete="off" />
         </div>
+      </div>
+      <div class="form-group">
+        <div class="enr-cell-label">Category *</div>
+        <select class="form-control enr-f-cat">
+          <option value="">Choose…</option>
+          <option value="Priority">Priority</option>
+          <option value="Not Priority">Not Priority</option>
+        </select>
       </div>
       <div class="form-group">
         <div class="enr-cell-label">Parcel Number *</div>
@@ -3816,6 +3894,11 @@ class FarmOpsApp {
     row.querySelector('.enr-f-area').addEventListener('input', (ev) => {
       ev.target.value = ev.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
     });
+    // each sequence has its own category; the prefix of this row follows it
+    row.querySelector('.enr-f-cat').addEventListener('change', (ev) => {
+      row.querySelector('.enr-seq-prefix').textContent = this.enrollmentPrefix(ev.target.value);
+      row.classList.remove('has-error');
+    });
     row.addEventListener('input', () => row.classList.remove('has-error'));
     box.appendChild(row);
     if (focus) row.querySelector('.enr-f-seq').focus();
@@ -3827,7 +3910,8 @@ class FarmOpsApp {
     const row = rows.find((r) => r.dataset.row === String(id));
     if (!row) return;
     if (rows.length === 1) {
-      row.querySelectorAll('input').forEach((i) => { i.value = ''; });
+      row.querySelectorAll('input, select').forEach((i) => { i.value = ''; });
+      row.querySelector('.enr-seq-prefix').textContent = '#';
       row.classList.remove('has-error');
       return;
     }
@@ -3835,20 +3919,14 @@ class FarmOpsApp {
   }
 
   clearEnrollmentForm() {
-    const anything = [...document.querySelectorAll('#enroll-form input')].some((i) => i.value.trim() && i.value.trim().toUpperCase() !== 'CLAIF-');
+    const anything = [...document.querySelectorAll('#enroll-form input, #enroll-form select')].some((i) => i.value.trim() && i.value.trim().toUpperCase() !== 'CLAIF-');
     if (anything && !confirm('Clear the land owner and all entries?')) return;
     document.getElementById('enr-no').value = 'CLAIF-';
     document.getElementById('enr-landowner').value = '';
-    document.getElementById('enr-category').value = 'Not Priority';
     document.getElementById('enr-entries').innerHTML = '';
     this.setEnrollmentExisting(null);
     document.getElementById('enr-name-help').textContent = '';
     this.addEnrollmentEntry(false);
-  }
-
-  updateEnrollmentPrefixes() {
-    const p = this.enrollmentPrefix();
-    document.querySelectorAll('#enr-entries .enr-seq-prefix').forEach((s) => { s.textContent = p; });
   }
 
   /** Existing CLAIF Number: load the land owner and show its saved parcels / blocks. */
@@ -3878,41 +3956,36 @@ class FarmOpsApp {
     const wasExisting = !!st.existing;
     st.existing = lo;
     const nameEl = document.getElementById('enr-landowner');
-    const catEl = document.getElementById('enr-category');
     const box = document.getElementById('enr-existing');
     const help = document.getElementById('enr-no-help');
     if (!lo) {
-      if (wasExisting) { nameEl.value = ''; catEl.value = 'Not Priority'; }
+      if (wasExisting) nameEl.value = '';
       nameEl.readOnly = false;
-      catEl.disabled = false;
       box.innerHTML = '';
       help.textContent = 'Word and number, e.g. CLAIF-686. Must be unique.';
-      this.updateEnrollmentPrefixes();
       return;
     }
     nameEl.value = lo.landOwnerName;
     nameEl.readOnly = true;
-    catEl.value = lo.category === 'Priority' ? 'Priority' : 'Not Priority';
-    catEl.disabled = true;
     document.getElementById('enr-name-help').textContent = '';
     help.innerHTML = '✔ Existing land owner. New entries will be <strong>added</strong>; saved records are not changed.';
-    this.updateEnrollmentPrefixes();
 
     const e = (v) => this.esc(v);
-    const prefix = lo.category === 'Priority' ? 'P-' : 'NP-';
+    const prefixOf = (b) => (this.entryCategory(b, lo) === 'Priority' ? 'P-' : 'NP-');
     const own = st.blocks.filter((b) => String(b.landOwnerId) === String(lo.landOwnerId))
       .sort((a, b) => (st.seqOf(a) || 999999) - (st.seqOf(b) || 999999) ||
         String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }));
     box.innerHTML = `
       <div class="enr-existing">
-        <div style="font-weight:700;margin-bottom:8px;">📋 Existing records of ${e(lo.landOwnerName)} (${e(lo.landOwnerNo)}) &bull; ${own.length} block(s)</div>
+        <div style="font-weight:700;margin-bottom:8px;">📋 Existing records of ${e(lo.landOwnerName)} (${e(lo.landOwnerNo)}) &bull; ${own.length} sequence(s)</div>
         ${own.length ? `
         <div class="table-responsive">
           <table class="table" style="background:var(--bg-surface);">
-            <thead><tr><th>Seq.</th><th>Parcel</th><th>Farm &amp; Block</th><th>Area (Ha)</th><th>Palms</th><th>Status</th></tr></thead>
+            <thead><tr><th>Seq.</th><th>Category</th><th>Parcel</th><th>Farm &amp; Block</th><th>Area (Ha)</th><th>Palms</th><th>Status</th></tr></thead>
             <tbody>${own.map((b) => `
               <tr>
-                <td><strong>${st.seqOf(b) ? prefix + st.seqOf(b) : '—'}</strong></td>
+                <td><strong>${st.seqOf(b) ? prefixOf(b) + st.seqOf(b) : '—'}</strong></td>
+                <td>${this.categoryBadge(this.entryCategory(b, lo))}</td>
                 <td>${e(b.parcelNumber)}</td>
                 <td>${e(b.farmBlockName)}</td>
                 <td>${b.areaHa ? e(b.areaHa) : '—'}</td>
@@ -3931,7 +4004,6 @@ class FarmOpsApp {
     const rawNo = document.getElementById('enr-no').value;
     const claif = this.normalizeClaifInput(rawNo);
     const name = document.getElementById('enr-landowner').value.trim();
-    const category = document.getElementById('enr-category').value;
     if (!claif) errors.push('CLAIF Number must be a word and a number, e.g. CLAIF-686.');
     if (!name) errors.push('Land Owner Name is required.');
     // Parcels already used by THIS land owner (by Land Owner ID; a new CLAIF Number has none yet)
@@ -3951,6 +4023,7 @@ class FarmOpsApp {
       const get = (c) => row.querySelector(c).value.trim();
       const en = {
         sequenceNo: get('.enr-f-seq'),
+        category: get('.enr-f-cat'),
         parcelNumber: get('.enr-f-parcel').replace(/\s+/g, ' '),
         farmBlock: get('.enr-f-block').replace(/\s+/g, ' '),
         areaHa: get('.enr-f-area'),
@@ -3962,6 +4035,7 @@ class FarmOpsApp {
       const rowErr = [];
       if (!en.sequenceNo) rowErr.push('Sequence Number is required');
       else if (!/^\d+$/.test(en.sequenceNo) || parseInt(en.sequenceNo, 10) < 1) rowErr.push('Sequence Number must be a whole number');
+      if (en.category !== 'Priority' && en.category !== 'Not Priority') rowErr.push('choose Priority or Not Priority');
       if (!en.parcelNumber) rowErr.push('Parcel Number is required');
       if (!en.farmBlock) rowErr.push('Farm & Block is required');
       if (en.areaHa && !/^\d+(\.\d+)?$/.test(en.areaHa)) rowErr.push('Area must be a number');
@@ -3984,7 +4058,7 @@ class FarmOpsApp {
 
     return {
       errors,
-      enrollment: { landOwnerNo: claif || rawNo, landOwnerName: name, category, entries },
+      enrollment: { landOwnerNo: claif || rawNo, landOwnerName: name, entries },   // category is inside each entry
       isExisting: !!st.existing
     };
   }
@@ -3997,23 +4071,24 @@ class FarmOpsApp {
       return;
     }
     const e = (v) => this.esc(v);
-    const prefix = enrollment.category === 'Priority' ? 'P-' : 'NP-';
+    const pCount = enrollment.entries.filter((en) => en.category === 'Priority').length;
     document.getElementById('form-modal-title').textContent = 'Review Enrollment';
     document.getElementById('form-modal-body').innerHTML = `
       <div class="form-grid-3" style="margin-bottom:12px;">
         <div><div class="form-helper">CLAIF Number</div><strong>${e(enrollment.landOwnerNo)}</strong></div>
         <div><div class="form-helper">Land Owner Name</div><strong>${e(enrollment.landOwnerName)}</strong></div>
-        <div><div class="form-helper">Category</div>${this.categoryBadge(enrollment.category)}</div>
+        <div><div class="form-helper">Sequences</div><strong>${pCount} Priority &bull; ${enrollment.entries.length - pCount} Not Priority</strong></div>
       </div>
       <div class="form-helper" style="margin-bottom:8px;">${isExisting
         ? 'Existing land owner: these entries will be <strong>added</strong>. Saved records stay as they are.'
         : 'New land owner.'}</div>
       <div class="table-responsive">
         <table class="table">
-          <thead><tr><th>Sequence</th><th>Parcel Number</th><th>Farm &amp; Block</th><th>Area (Ha)</th><th>Palm Count</th></tr></thead>
+          <thead><tr><th>Sequence</th><th>Category</th><th>Parcel Number</th><th>Farm &amp; Block</th><th>Area (Ha)</th><th>Palm Count</th></tr></thead>
           <tbody>${enrollment.entries.map((en) => `
             <tr>
-              <td><strong>${prefix}${e(en.sequenceNo)}</strong></td>
+              <td><strong>${this.enrollmentPrefix(en.category)}${e(en.sequenceNo)}</strong></td>
+              <td>${this.categoryBadge(en.category)}</td>
               <td>${e(en.parcelNumber)}</td>
               <td>${e(en.farmBlock)}</td>
               <td>${en.areaHa ? e(en.areaHa) : '—'}</td>
@@ -4048,6 +4123,7 @@ class FarmOpsApp {
   filterEnrollmentTable() {
     const q = (document.getElementById('enr-search')?.value || '').trim().toLowerCase();
     const st = document.getElementById('enr-status')?.value || 'Active';
+    const fb = document.getElementById('enr-fb')?.value || 'ALL';
     document.querySelectorAll('.enr-row').forEach((row) => {
       const matchText = !q || row.dataset.search.includes(q);
       const active = row.dataset.status === 'Active';
@@ -4059,12 +4135,15 @@ class FarmOpsApp {
       else if (st === 'NOTPRIORITY') matchStatus = active && row.dataset.priority === '0';
       else if (st === 'NOSIZE') matchStatus = active && row.dataset.nosize === '1';
       else if (st === 'NOSEQ') matchStatus = active && row.dataset.noseq === '1';
-      row.style.display = matchText && matchStatus ? '' : 'none';
+      const matchFb = fb === 'ALL' || row.dataset.fb === fb;
+      row.style.display = matchText && matchStatus && matchFb ? '' : 'none';
     });
     // Hide a Priority / Not Priority heading when none of its rows are shown
     document.querySelectorAll('.enr-group').forEach((head) => {
-      const anyVisible = [...document.querySelectorAll(`.enr-row[data-group="${head.dataset.group}"]`)].some((r) => r.style.display !== 'none');
-      head.style.display = anyVisible ? '' : 'none';
+      const shown = [...document.querySelectorAll(`.enr-row[data-group="${head.dataset.group}"]`)].filter((r) => r.style.display !== 'none').length;
+      head.style.display = shown ? '' : 'none';
+      const cnt = head.querySelector('.enr-group-count');
+      if (cnt) cnt.textContent = shown;   // sequences shown in this group
     });
   }
 
@@ -4083,36 +4162,45 @@ class FarmOpsApp {
       .map((p) => p.parcelNumber);
     const e = (v) => this.esc(v);
     const currentSeq = parseInt(block.sequenceNo, 10) || parseInt(lo.sequenceNo, 10) || '';
-    const prefix = lo.category === 'Priority' ? 'P-' : 'NP-';
+    const cat = this.entryCategory(block, lo);   // THIS sequence's own category
 
     document.getElementById('form-modal-title').textContent = `Edit Entry ${block.blockId}`;
     document.getElementById('form-modal-body').innerHTML = `
       <div style="background:var(--palm-subtle);border:1px solid var(--palm-border);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:14px;font-size:13px;">
-        <div><strong>Record ID:</strong> <code>${e(block.blockId)}</code> &nbsp;•&nbsp; <strong>${e(lo.landOwnerNo || '—')}</strong> &nbsp;•&nbsp; ${e(block.landOwnerName)} &nbsp;•&nbsp; ${this.categoryBadge(lo.category)}</div>
+        <div><strong>Record ID:</strong> <code>${e(block.blockId)}</code> &nbsp;•&nbsp; <strong>${e(lo.landOwnerNo || '—')}</strong> &nbsp;•&nbsp; ${e(block.landOwnerName)}</div>
         <div class="form-helper" style="margin-top:4px;">Only this entry is changed. ${siblings.length ? `The other ${siblings.length} entr${siblings.length === 1 ? 'y' : 'ies'} of ${e(lo.landOwnerNo || block.landOwnerName)} stay as they are.` : ''}</div>
         ${lo.landOwnerId ? `<button type="button" class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12.5px;"
-           onclick="app.openEditLandownerProfileModal('${e(lo.landOwnerId)}')">🏡 Edit land owner profile (CLAIF, name, category)…</button>` : ''}
+           onclick="app.openEditLandownerProfileModal('${e(lo.landOwnerId)}')">🏡 Edit land owner profile (CLAIF, name)…</button>` : ''}
       </div>
       <div class="form-grid-2">
         <div class="form-group">
+          <label class="form-label required">Category (this sequence only)</label>
+          <select id="ed-category" class="form-control" onchange="document.getElementById('ed-seq-prefix').textContent = this.value === 'Priority' ? 'P-' : 'NP-'">
+            <option value="Priority" ${cat === 'Priority' ? 'selected' : ''}>Priority</option>
+            <option value="Not Priority" ${cat !== 'Priority' ? 'selected' : ''}>Not Priority</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label class="form-label required">Sequence No.</label>
           <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-weight:700;min-width:34px;">${prefix}</span>
+            <span id="ed-seq-prefix" style="font-weight:700;min-width:34px;">${cat === 'Priority' ? 'P-' : 'NP-'}</span>
             <input type="text" id="ed-seq" class="form-control" inputmode="numeric" maxlength="6" value="${e(currentSeq)}"
                    oninput="this.value = this.value.replace(/\\D/g, '')" />
           </div>
         </div>
+      </div>
+      <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label required">Parcel Number</label>
           <input type="text" id="ed-parcel" class="form-control" maxlength="120" list="ed-parcel-list" value="${e(block.parcelNumber)}" />
           <datalist id="ed-parcel-list">${ownerParcels.map((p) => `<option value="${e(p)}"></option>`).join('')}</datalist>
         </div>
+        <div class="form-group">
+          <label class="form-label required">Farm &amp; Block</label>
+          <input type="text" id="ed-block" class="form-control" maxlength="120" value="${e(block.farmBlockName)}" placeholder="e.g. Farm 5 Block 1" />
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label required">Farm &amp; Block</label>
-        <input type="text" id="ed-block" class="form-control" maxlength="120" value="${e(block.farmBlockName)}" placeholder="e.g. Farm 5 Block 1" />
-        <div class="form-helper">Changing the parcel or Farm &amp; Block also moves this entry's own reports and KPIs. Supervisor access follows the new Farm &amp; Block.</div>
-      </div>
+      <div class="form-helper" style="margin:-6px 0 12px;">Changing the parcel or Farm &amp; Block also moves this entry's own reports and KPIs. Supervisor access follows the new Farm &amp; Block.</div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Area (Ha)</label>
@@ -4150,6 +4238,7 @@ class FarmOpsApp {
       try {
         const r = await syncService.apiCall('UPDATE_BLOCK', {
           blockId: block.blockId,          // the Record ID — the only thing used to find the entry
+          category: document.getElementById('ed-category').value,   // this sequence only
           sequenceNo: newSeq,
           parcelNumber: newParcel,
           farmBlock: newBlock,
@@ -4185,18 +4274,10 @@ class FarmOpsApp {
         of this CLAIF Number: ${entries.map((b) => `${e(b.blockId)} (${e(b.parcelNumber)} › ${e(b.farmBlockName)})`).join(', ') || 'none'}.
         Other land owners with the same name are not affected. To change one parcel / block, use ✏️ on that row instead.
       </div>
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label class="form-label required">CLAIF Number</label>
-          <input type="text" id="lp-no" class="form-control" maxlength="30" value="${e(lo.landOwnerNo || 'CLAIF-')}" autocapitalize="characters" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Category</label>
-          <select id="lp-category" class="form-control">
-            <option value="Not Priority" ${lo.category !== 'Priority' ? 'selected' : ''}>Not Priority</option>
-            <option value="Priority" ${lo.category === 'Priority' ? 'selected' : ''}>Priority</option>
-          </select>
-        </div>
+      <div class="form-group">
+        <label class="form-label required">CLAIF Number</label>
+        <input type="text" id="lp-no" class="form-control" maxlength="30" value="${e(lo.landOwnerNo || 'CLAIF-')}" autocapitalize="characters" />
+        <div class="form-helper">Priority / Not Priority is set on each sequence (✏️ on its row), not here.</div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -4224,7 +4305,6 @@ class FarmOpsApp {
         const r = await syncService.apiCall('UPDATE_LANDOWNER', {
           landOwnerId: lo.landOwnerId,
           landOwnerNo: document.getElementById('lp-no').value,
-          category: document.getElementById('lp-category').value,
           landOwnerName: name,
           phone: document.getElementById('lp-phone').value
         });
@@ -4258,7 +4338,8 @@ class FarmOpsApp {
         <table class="table">
           <tbody>
             <tr><th style="width:140px;">Record ID</th><td><code>${e(block.blockId)}</code></td></tr>
-            <tr><th>Sequence</th><td>${seq ? `${lo.category === 'Priority' ? 'P-' : 'NP-'}${seq}` : '—'}</td></tr>
+            <tr><th>Sequence</th><td>${seq ? `${this.entryCategory(block, lo) === 'Priority' ? 'P-' : 'NP-'}${seq}` : '—'}</td></tr>
+            <tr><th>Category</th><td>${this.categoryBadge(this.entryCategory(block, lo))}</td></tr>
             <tr><th>CLAIF Number</th><td>${e(lo.landOwnerNo || '—')}</td></tr>
             <tr><th>Land Owner</th><td>${e(block.landOwnerName)}</td></tr>
             <tr><th>Parcel</th><td>${e(block.parcelNumber)}</td></tr>
