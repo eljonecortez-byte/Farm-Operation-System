@@ -3561,8 +3561,9 @@ class FarmOpsApp {
 
     const activeCount = blocks.filter((b) => b.status !== 'Deactivated').length;
     const unassigned = blocks.filter((b) => b.status !== 'Deactivated' && (!b.supervisorNames || !b.supervisorNames.length)).length;
-    const priorityCount = landowners.filter((l) => l.status !== 'Deactivated' && l.category === 'Priority').length;
-
+        const priorityCount = pSeq;
+    const notPriorityCount = nSeq;
+    let lastGroup = '';
     container.innerHTML = `
       <div style="margin-bottom: 20px;">
         <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Land Owner Enrollment</h2>
