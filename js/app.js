@@ -3740,13 +3740,14 @@ class FarmOpsApp {
                   <td><strong>${e(b.landOwnerName)}</strong></td>
                   <td>${this.categoryBadge(lo.category)}</td>
                   <td>${e(b.parcelNumber)}</td>
-                  <td>${e(b.farmBlockName)} <span style="font-size:11px;color:var(--text-light);">${e(b.blockId)}</span></td>
+                  <td>${e(b.farmBlockName)} <span style="font-size:11px;color:var(--text-light);" title="Record ID">${e(b.blockId)}</span></td>
                   <td>${b.areaHa ? e(b.areaHa) : '<span style="color:#92400e;">—</span>'}</td>
                   <td>${b.palmCount ? e(b.palmCount) : '<span style="color:#92400e;">—</span>'}</td>
                   <td>${sup ? `👤 ${e(sup)}` : `<span class="badge badge-behind">Unassigned</span>`}</td>
                   <td><span class="badge ${active ? 'badge-completed' : 'badge-behind'}">${active ? 'Active' : 'Deactivated'}</span></td>
                   <td style="white-space:nowrap;">
-                    <button class="btn btn-outline btn-icon" title="Edit sequence, number, category, parcel, area, palms" onclick="app.openEditEnrollmentModal('${e(b.blockId)}')">✏️</button>
+                    <button class="btn btn-outline btn-icon" title="Edit this entry (${e(b.blockId)})" onclick="app.openEditEnrollmentModal('${e(b.blockId)}')">✏️</button>
+                    <button class="btn btn-danger btn-icon" title="Delete this entry (${e(b.blockId)})" onclick="app.confirmDeleteEntry('${e(b.blockId)}')">🗑️</button>
                     ${active
                       ? `<button class="btn btn-danger btn-icon" title="Deactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Deactivated')">🚫</button>`
                       : `<button class="btn btn-outline btn-icon" title="Reactivate" onclick="app.setBlockStatus('${e(b.blockId)}', 'Active')">♻️</button>`}
@@ -4067,30 +4068,131 @@ class FarmOpsApp {
     });
   }
 
-  /** Edit: land owner (CLAIF, category, name, phone) and this block (sequence, parcel, area, palms). */
+  /**
+   * Edit ONE parcel / farm & block entry, identified only by its Record ID (Block ID).
+   * Other entries of the same land owner / CLAIF Number are never changed here.
+   */
   async openEditEnrollmentModal(blockId) {
     const block = await db.get('farmsAndBlocks', blockId);
-    if (!block) return;
-    // Only THIS land owner (by Land Owner ID) — others with the same name are not touched
+    if (!block) { this.showToast('This entry was not found. Please refresh.', 'error'); return; }
     const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerId) === String(block.landOwnerId)) || {};
+    const allBlocks = await db.getAll('farmsAndBlocks');
+    const siblings = allBlocks.filter((b) => String(b.landOwnerId) === String(block.landOwnerId) && b.blockId !== block.blockId);
     const ownerParcels = (await db.getAll('parcels'))
       .filter((p) => String(p.landOwnerId) === String(block.landOwnerId) && p.status !== 'Deactivated')
       .map((p) => p.parcelNumber);
     const e = (v) => this.esc(v);
     const currentSeq = parseInt(block.sequenceNo, 10) || parseInt(lo.sequenceNo, 10) || '';
+    const prefix = lo.category === 'Priority' ? 'P-' : 'NP-';
 
-    document.getElementById('form-modal-title').textContent = `Edit: ${block.landOwnerName}${lo.landOwnerNo ? ` (${lo.landOwnerNo})` : ''} › ${block.parcelNumber} › ${block.farmBlockName}`;
+    document.getElementById('form-modal-title').textContent = `Edit Entry ${block.blockId}`;
     document.getElementById('form-modal-body').innerHTML = `
-      <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">🏡 Land Owner ${e(lo.landOwnerNo || '')} (applies only to this CLAIF Number's blocks)</div>
+      <div style="background:var(--palm-subtle);border:1px solid var(--palm-border);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:14px;font-size:13px;">
+        <div><strong>Record ID:</strong> <code>${e(block.blockId)}</code> &nbsp;•&nbsp; <strong>${e(lo.landOwnerNo || '—')}</strong> &nbsp;•&nbsp; ${e(block.landOwnerName)} &nbsp;•&nbsp; ${this.categoryBadge(lo.category)}</div>
+        <div class="form-helper" style="margin-top:4px;">Only this entry is changed. ${siblings.length ? `The other ${siblings.length} entr${siblings.length === 1 ? 'y' : 'ies'} of ${e(lo.landOwnerNo || block.landOwnerName)} stay as they are.` : ''}</div>
+        ${lo.landOwnerId ? `<button type="button" class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12.5px;"
+           onclick="app.openEditLandownerProfileModal('${e(lo.landOwnerId)}')">🏡 Edit land owner profile (CLAIF, name, category)…</button>` : ''}
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label required">Sequence No.</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-weight:700;min-width:34px;">${prefix}</span>
+            <input type="text" id="ed-seq" class="form-control" inputmode="numeric" maxlength="6" value="${e(currentSeq)}"
+                   oninput="this.value = this.value.replace(/\\D/g, '')" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label required">Parcel Number</label>
+          <input type="text" id="ed-parcel" class="form-control" maxlength="120" list="ed-parcel-list" value="${e(block.parcelNumber)}" />
+          <datalist id="ed-parcel-list">${ownerParcels.map((p) => `<option value="${e(p)}"></option>`).join('')}</datalist>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label required">Farm &amp; Block</label>
+        <input type="text" id="ed-block" class="form-control" maxlength="120" value="${e(block.farmBlockName)}" placeholder="e.g. Farm 5 Block 1" />
+        <div class="form-helper">Changing the parcel or Farm &amp; Block also moves this entry's own reports and KPIs. Supervisor access follows the new Farm &amp; Block.</div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Area (Ha)</label>
+          <input type="text" id="ed-area" class="form-control" inputmode="decimal" maxlength="12" value="${e(block.areaHa || '')}"
+                 oninput="this.value = this.value.replace(/[^\\d.]/g, '').replace(/(\\..*)\\./g, '$1')" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Palm Count</label>
+          <input type="text" id="ed-palms" class="form-control" inputmode="numeric" maxlength="9" value="${e(block.palmCount || '')}"
+                 oninput="this.value = this.value.replace(/\\D/g, '')" />
+        </div>
+      </div>
+    `;
+
+    const btn = document.getElementById('form-modal-submit-btn');
+    btn.textContent = 'Save Entry';
+    btn.className = 'btn btn-primary';
+    btn.disabled = false;
+    btn.onclick = async () => {
+      if (btn.disabled) return;   // no double submit
+      const newParcel = document.getElementById('ed-parcel').value.trim().replace(/\s+/g, ' ');
+      const newBlock = document.getElementById('ed-block').value.trim().replace(/\s+/g, ' ');
+      const newSeq = document.getElementById('ed-seq').value.trim();
+      const area = document.getElementById('ed-area').value.trim();
+      const palms = document.getElementById('ed-palms').value.trim();
+      if (!newParcel || !newBlock) { this.showToast('Parcel Number and Farm & Block cannot be empty.', 'warning'); return; }
+      if (!/^\d+$/.test(newSeq) || parseInt(newSeq, 10) < 1) { this.showToast('Type a Sequence No. (whole number, 1 or more).', 'warning'); return; }
+      if (area && !/^\d+(\.\d+)?$/.test(area)) { this.showToast('Area must be a number.', 'warning'); return; }
+      if (palms && !/^\d+$/.test(palms)) { this.showToast('Palm Count must be a whole number.', 'warning'); return; }
+      const moved = newParcel.toLowerCase() !== String(block.parcelNumber).toLowerCase() || newBlock !== block.farmBlockName;
+      if (moved && !confirm(`Change entry ${block.blockId} from ${block.parcelNumber} › ${block.farmBlockName} to ${newParcel} › ${newBlock}?\nOnly this entry and its own reports are updated.`)) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const r = await syncService.apiCall('UPDATE_BLOCK', {
+          blockId: block.blockId,          // the Record ID — the only thing used to find the entry
+          sequenceNo: newSeq,
+          parcelNumber: newParcel,
+          farmBlock: newBlock,
+          areaHa: area,
+          palmCount: palms
+        });
+        await syncService.pullMasterData();
+        if (moved) await syncService.pullReports();
+        this.closeModal('form-modal');
+        this.showToast(r.message, 'success');
+        this.navigateTo('landowner-enrollment');
+      } catch (err) {
+        this.showToast(`Update failed: ${err.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Entry';
+      }
+    };
+    this.openModal('form-modal');
+  }
+
+  /** Land owner profile (one LandOwners row). Shared by all entries of this CLAIF Number, so it is edited separately. */
+  async openEditLandownerProfileModal(landOwnerId) {
+    const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerId) === String(landOwnerId));
+    if (!lo) { this.showToast('Land owner not found. Please refresh.', 'error'); return; }
+    const entries = (await db.getAll('farmsAndBlocks')).filter((b) => String(b.landOwnerId) === String(landOwnerId));
+    const e = (v) => this.esc(v);
+
+    document.getElementById('form-modal-title').textContent = `Land Owner Profile: ${lo.landOwnerNo || lo.landOwnerName}`;
+    document.getElementById('form-modal-body').innerHTML = `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius-md);padding:10px 12px;margin-bottom:14px;font-size:13px;color:#92400e;">
+        This is the land owner's profile (${e(lo.landOwnerId)}). It is shown on all ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}
+        of this CLAIF Number: ${entries.map((b) => `${e(b.blockId)} (${e(b.parcelNumber)} › ${e(b.farmBlockName)})`).join(', ') || 'none'}.
+        Other land owners with the same name are not affected. To change one parcel / block, use ✏️ on that row instead.
+      </div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label required">CLAIF Number</label>
-          <input type="text" id="ed-no" class="form-control" maxlength="30" value="${e(lo.landOwnerNo || 'CLAIF-')}"
-                 placeholder="e.g. CLAIF-686" autocapitalize="characters" />
+          <input type="text" id="lp-no" class="form-control" maxlength="30" value="${e(lo.landOwnerNo || 'CLAIF-')}" autocapitalize="characters" />
         </div>
         <div class="form-group">
           <label class="form-label">Category</label>
-          <select id="ed-category" class="form-control" onchange="document.getElementById('ed-seq-prefix').textContent = this.value === 'Priority' ? 'P-' : 'NP-'">
+          <select id="lp-category" class="form-control">
             <option value="Not Priority" ${lo.category !== 'Priority' ? 'selected' : ''}>Not Priority</option>
             <option value="Priority" ${lo.category === 'Priority' ? 'selected' : ''}>Priority</option>
           </select>
@@ -4099,95 +4201,97 @@ class FarmOpsApp {
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label required">Land Owner Name</label>
-          <input type="text" id="ed-name" class="form-control" maxlength="120" value="${e(block.landOwnerName)}" />
-          <div class="form-helper">Renaming updates only this CLAIF Number's parcels, blocks, reports and KPIs.</div>
+          <input type="text" id="lp-name" class="form-control" maxlength="120" value="${e(lo.landOwnerName)}" />
         </div>
         <div class="form-group">
           <label class="form-label">Phone</label>
-          <input type="text" id="ed-phone" class="form-control" value="${e(lo.phone || '')}" />
-        </div>
-      </div>
-      <div style="font-weight:700;color:var(--palm-dark);margin:6px 0 8px;">🌴 ${e(block.farmBlockName)}</div>
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label class="form-label required">Sequence No.</label>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span id="ed-seq-prefix" style="font-weight:700;min-width:34px;">${lo.category === 'Priority' ? 'P-' : 'NP-'}</span>
-            <input type="text" id="ed-seq" class="form-control" inputmode="numeric" maxlength="6" value="${e(currentSeq)}"
-                   oninput="this.value = this.value.replace(/\\D/g, '')" />
-          </div>
-          <div class="form-helper">Typed by you. Saved exactly as entered.</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label required">Parcel Number</label>
-          <input type="text" id="ed-parcel" class="form-control" maxlength="120" list="ed-parcel-list" value="${e(block.parcelNumber)}" />
-          <datalist id="ed-parcel-list">${ownerParcels.map((p) => `<option value="${e(p)}"></option>`).join('')}</datalist>
-          <div class="form-helper">Changing it moves only this Farm &amp; Block (and its reports) to that parcel.</div>
-        </div>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label class="form-label">Area (Ha)</label>
-          <input type="number" id="ed-area" class="form-control" min="0" step="0.01" value="${e(block.areaHa || '')}" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Palm Count</label>
-          <input type="number" id="ed-palms" class="form-control" min="0" step="1" value="${e(block.palmCount || '')}" />
+          <input type="text" id="lp-phone" class="form-control" value="${e(lo.phone || '')}" />
         </div>
       </div>
     `;
-
     const btn = document.getElementById('form-modal-submit-btn');
-    btn.textContent = 'Save';
+    btn.textContent = 'Save Profile';
+    btn.className = 'btn btn-primary';
+    btn.disabled = false;
     btn.onclick = async () => {
-      const newName = document.getElementById('ed-name').value.trim();
-      const newParcel = document.getElementById('ed-parcel').value.trim();
-      const newSeq = document.getElementById('ed-seq').value.trim();
-      if (!newName || !newParcel) {
-        this.showToast('Land Owner Name and Parcel Number cannot be empty.', 'warning');
-        return;
-      }
-      if (!/^\d+$/.test(newSeq) || parseInt(newSeq, 10) < 1) {
-        this.showToast('Type a Sequence No. (whole number, 1 or more).', 'warning');
-        return;
-      }
-      const renamed = newName !== block.landOwnerName;
-      const moved = newParcel.toLowerCase() !== String(block.parcelNumber).toLowerCase();
-      if ((renamed || moved) && !confirm(
-        `${renamed ? `Rename "${block.landOwnerName}" to "${newName}"` : ''}${renamed && moved ? ' and ' : ''}${moved ? `move ${block.farmBlockName} to parcel ${newParcel}` : ''}?\nOld reports are updated too.`)) {
-        return;
-      }
-
+      if (btn.disabled) return;
+      const name = document.getElementById('lp-name').value.trim();
+      if (!name) { this.showToast('Land Owner Name cannot be empty.', 'warning'); return; }
+      const renamed = name !== lo.landOwnerName;
+      if (renamed && !confirm(`Rename ${lo.landOwnerNo || ''} "${lo.landOwnerName}" to "${name}"?\nIts ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} and their reports show the new name.`)) return;
       btn.disabled = true;
       try {
-        const messages = [];
-        if (lo.landOwnerId) {
-          const r = await syncService.apiCall('UPDATE_LANDOWNER', {
-            landOwnerId: lo.landOwnerId,
-            landOwnerNo: document.getElementById('ed-no').value,
-            category: document.getElementById('ed-category').value,
-            landOwnerName: newName,
-            phone: document.getElementById('ed-phone').value
-          });
-          messages.push(r.message);
-        }
-        const r2 = await syncService.apiCall('UPDATE_BLOCK', {
-          blockId,
-          sequenceNo: newSeq,
-          parcelNumber: newParcel,
-          areaHa: document.getElementById('ed-area').value,
-          palmCount: document.getElementById('ed-palms').value
+        const r = await syncService.apiCall('UPDATE_LANDOWNER', {
+          landOwnerId: lo.landOwnerId,
+          landOwnerNo: document.getElementById('lp-no').value,
+          category: document.getElementById('lp-category').value,
+          landOwnerName: name,
+          phone: document.getElementById('lp-phone').value
         });
-        messages.push(r2.message);
         await syncService.pullMasterData();
-        if (renamed || moved) await syncService.pullReports();   // bring the renamed reports to this device
+        if (renamed) await syncService.pullReports();
         this.closeModal('form-modal');
-        this.showToast(messages.join(' '), 'success');
+        this.showToast(r.message, 'success');
         this.navigateTo('landowner-enrollment');
       } catch (err) {
-        this.showToast(err.message, 'error');
+        this.showToast(`Update failed: ${err.message}`, 'error');
       } finally {
         btn.disabled = false;
+      }
+    };
+    this.openModal('form-modal');
+  }
+
+  /** Delete ONE entry (by Record ID) after a confirmation that shows exactly what is deleted. */
+  async confirmDeleteEntry(blockId) {
+    const block = await db.get('farmsAndBlocks', blockId);
+    if (!block) { this.showToast('This entry was not found. Please refresh.', 'error'); return; }
+    const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerId) === String(block.landOwnerId)) || {};
+    const others = (await db.getAll('farmsAndBlocks')).filter((b) => String(b.landOwnerId) === String(block.landOwnerId) && b.blockId !== blockId).length;
+    const e = (v) => this.esc(v);
+    const seq = parseInt(block.sequenceNo, 10) || parseInt(lo.sequenceNo, 10);
+
+    document.getElementById('form-modal-title').textContent = 'Delete Entry';
+    document.getElementById('form-modal-body').innerHTML = `
+      <p style="font-weight:700;margin-bottom:10px;">Are you sure you want to delete this entry?</p>
+      <div class="table-responsive">
+        <table class="table">
+          <tbody>
+            <tr><th style="width:140px;">Record ID</th><td><code>${e(block.blockId)}</code></td></tr>
+            <tr><th>Sequence</th><td>${seq ? `${lo.category === 'Priority' ? 'P-' : 'NP-'}${seq}` : '—'}</td></tr>
+            <tr><th>CLAIF Number</th><td>${e(lo.landOwnerNo || '—')}</td></tr>
+            <tr><th>Land Owner</th><td>${e(block.landOwnerName)}</td></tr>
+            <tr><th>Parcel</th><td>${e(block.parcelNumber)}</td></tr>
+            <tr><th>Farm &amp; Block</th><td>${e(block.farmBlockName)}</td></tr>
+            <tr><th>Area / Palms</th><td>${e(block.areaHa || '—')} ha &bull; ${e(block.palmCount || '—')} palms</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="form-helper" style="margin-top:8px;">
+        Only this entry is deleted. The land owner profile ${others ? `and the other ${others} entr${others === 1 ? 'y' : 'ies'} of ${e(lo.landOwnerNo || block.landOwnerName)} stay` : 'stays'}.
+        Reports already submitted for it are kept as history; its KPIs are switched off.
+      </div>
+    `;
+    const btn = document.getElementById('form-modal-submit-btn');
+    btn.textContent = '🗑️ Confirm Delete';
+    btn.className = 'btn btn-danger';
+    btn.disabled = false;
+    btn.onclick = async () => {
+      if (btn.disabled) return;   // no double submit
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      try {
+        const r = await syncService.apiCall('DELETE_BLOCK', { blockId: block.blockId });
+        await syncService.pullMasterData();
+        this.closeModal('form-modal');
+        this.showToast(r.message || 'Entry deleted.', 'success');
+        this.navigateTo('landowner-enrollment');
+      } catch (err) {
+        this.showToast(`Delete failed: ${err.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.className = 'btn btn-primary';
+        btn.textContent = 'Save';
       }
     };
     this.openModal('form-modal');
@@ -5265,7 +5369,7 @@ class FarmOpsApp {
     if (m) m.classList.remove('active');
     if (modalId === 'form-modal') {
       const btn = document.getElementById('form-modal-submit-btn');
-      if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+      if (btn) { btn.textContent = 'Save'; btn.disabled = false; btn.className = 'btn btn-primary'; }
       this._userModal = null;
     }
 
