@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.0.0';
+const FRONTEND_VERSION = '4.0.1';
 
 class FarmOpsApp {
   constructor() {
@@ -4220,18 +4220,18 @@ class FarmOpsApp {
     document.getElementById('form-modal-body').innerHTML = `
       <div style="background:var(--palm-subtle);border:1px solid var(--palm-border);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:14px;font-size:13px;">
         <div><strong>Record ID:</strong> <code>${e(block.recordId)}</code> &nbsp;•&nbsp; ${e(block.parcelNumber)} › ${e(block.farmBlockName)}</div>
-        <div class="form-helper" style="margin-top:4px;">Only this entry is changed. ${siblings.length ? `The other ${siblings.length} entr${siblings.length === 1 ? 'y' : 'ies'} of ${e(lo.landOwnerNo || block.landOwnerName)} stay as they are.` : ''}</div>
-        ${lo.landOwnerId ? `<button type="button" class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12.5px;"
-           onclick="app.openEditLandownerProfileModal('${e(lo.landOwnerId)}')">🏡 Edit land owner profile (CLAIF, name)…</button>` : ''}
+        <div class="form-helper" style="margin-top:4px;">Every field below changes <strong>only this row</strong>. ${siblings.length ? `The other ${siblings.length} row(s) with ${e(lo.landOwnerNo || block.landOwnerName)} stay exactly as they are.` : ''}</div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
-          <label class="form-label">CLAIF Number</label>
-          <input type="text" class="form-control" value="${e(lo.landOwnerNo || '—')}" readonly style="background:#f1f5f9;" />
+          <label class="form-label required">CLAIF Number</label>
+          <input type="text" id="ed-claif" class="form-control" maxlength="30" value="${e(lo.landOwnerNo || block.landOwnerNo || '')}" autocapitalize="characters" />
+          <div class="form-helper">A different number moves only this row to that CLAIF Number.</div>
         </div>
         <div class="form-group">
-          <label class="form-label">Land Owner Name</label>
-          <input type="text" class="form-control" value="${e(block.landOwnerName)}" readonly style="background:#f1f5f9;" />
+          <label class="form-label required">Land Owner Name</label>
+          <input type="text" id="ed-name" class="form-control" maxlength="120" value="${e(block.landOwnerName)}" />
+          <div class="form-helper">Changes the name on this row only.</div>
         </div>
       </div>
       <div class="form-grid-2">
@@ -4286,14 +4286,20 @@ class FarmOpsApp {
       const newParcel = document.getElementById('ed-parcel').value.trim().replace(/\s+/g, ' ');
       const newBlock = document.getElementById('ed-block').value.trim().replace(/\s+/g, ' ');
       const newSeq = document.getElementById('ed-seq').value.trim();
+      const newName = document.getElementById('ed-name').value.trim().replace(/\s+/g, ' ');
+      const newClaif = this.normalizeClaifInput(document.getElementById('ed-claif').value);
+      const oldClaif = String(lo.landOwnerNo || block.landOwnerNo || '');
+      if (!newName) { this.showToast('Land Owner Name cannot be empty.', 'warning'); return; }
+      if (document.getElementById('ed-claif').value.trim() && !newClaif) { this.showToast('CLAIF Number must be a word and a number, e.g. CLAIF-686.', 'warning'); return; }
+      const ownerChanged = newName !== block.landOwnerName || (newClaif && newClaif !== oldClaif.toUpperCase());
       const area = document.getElementById('ed-area').value.trim();
       const palms = document.getElementById('ed-palms').value.trim();
       if (!newParcel || !newBlock) { this.showToast('Parcel Number and Farm & Block cannot be empty.', 'warning'); return; }
       if (!/^\d+$/.test(newSeq) || parseInt(newSeq, 10) < 1) { this.showToast('Type a Sequence No. (whole number, 1 or more).', 'warning'); return; }
       if (area && !/^\d+(\.\d+)?$/.test(area)) { this.showToast('Area must be a number.', 'warning'); return; }
       if (palms && !/^\d+$/.test(palms)) { this.showToast('Palm Count must be a whole number.', 'warning'); return; }
-      const moved = newParcel.toLowerCase() !== String(block.parcelNumber).toLowerCase() || newBlock !== block.farmBlockName;
-      if (moved && !confirm(`Change entry ${block.recordId} from ${block.parcelNumber} › ${block.farmBlockName} to ${newParcel} › ${newBlock}?\nOnly this entry and its own reports are updated.`)) return;
+      const moved = newParcel.toLowerCase() !== String(block.parcelNumber).toLowerCase() || newBlock !== block.farmBlockName || ownerChanged;
+      if (moved && !confirm(`Change ${block.recordId} only:\n${oldClaif} ${block.landOwnerName} › ${block.parcelNumber} › ${block.farmBlockName}\n→ ${newClaif || oldClaif} ${newName} › ${newParcel} › ${newBlock}\n\nOther rows are not changed. This row's own reports are updated.`)) return;
 
       btn.disabled = true;
       btn.textContent = 'Saving...';
@@ -4303,6 +4309,8 @@ class FarmOpsApp {
           blockId: block.blockId,          // cross-check: the server refuses if it does not belong to that Record ID
           clientVersion: FRONTEND_VERSION,
           category: document.getElementById('ed-category').value,   // this sequence only
+          landOwnerName: newName,                                    // this row only
+          landOwnerNo: newClaif || oldClaif,                         // this row only
           sequenceNo: newSeq,
           parcelNumber: newParcel,
           farmBlock: newBlock,
