@@ -3814,6 +3814,9 @@ class FarmOpsApp {
     const block = await db.get('farmsAndBlocks', blockId);
     if (!block) return;
     const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerName).toLowerCase() === String(block.landOwnerName).toLowerCase()) || {};
+    const ownerParcels = (await db.getAll('parcels'))
+      .filter((p) => String(p.landOwnerName).toLowerCase() === String(block.landOwnerName).toLowerCase() && p.status !== 'Deactivated')
+      .map((p) => p.parcelNumber);
     const e = (v) => this.esc(v);
 
     document.getElementById('form-modal-title').textContent = `Edit: ${block.landOwnerName} › ${block.parcelNumber} › ${block.farmBlockName}`;
@@ -3835,8 +3838,9 @@ class FarmOpsApp {
       </div>
       <div class="form-grid-2">
         <div class="form-group">
-          <label class="form-label">Contact Person</label>
-          <input type="text" id="ed-contact" class="form-control" value="${e(lo.contactPerson || '')}" />
+          <label class="form-label required">Land Owner Name</label>
+          <input type="text" id="ed-name" class="form-control" maxlength="120" value="${e(block.landOwnerName)}" />
+          <div class="form-helper">Renaming also updates this land owner's parcels, blocks, reports and KPIs.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Phone</label>
@@ -3844,6 +3848,12 @@ class FarmOpsApp {
         </div>
       </div>
       <div style="font-weight:700;color:var(--palm-dark);margin:6px 0 8px;">🌴 ${e(block.farmBlockName)}</div>
+      <div class="form-group">
+        <label class="form-label required">Parcel Number</label>
+        <input type="text" id="ed-parcel" class="form-control" maxlength="120" list="ed-parcel-list" value="${e(block.parcelNumber)}" />
+        <datalist id="ed-parcel-list">${ownerParcels.map((p) => `<option value="${e(p)}"></option>`).join('')}</datalist>
+        <div class="form-helper">Changing it moves only this Farm &amp; Block (and its reports) to that parcel.</div>
+      </div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Area (Ha)</label>
@@ -3859,25 +3869,43 @@ class FarmOpsApp {
     const btn = document.getElementById('form-modal-submit-btn');
     btn.textContent = 'Save';
     btn.onclick = async () => {
+      const newName = document.getElementById('ed-name').value.trim();
+      const newParcel = document.getElementById('ed-parcel').value.trim();
+      if (!newName || !newParcel) {
+        this.showToast('Land Owner Name and Parcel Number cannot be empty.', 'warning');
+        return;
+      }
+      const renamed = newName !== block.landOwnerName;
+      const moved = newParcel.toLowerCase() !== String(block.parcelNumber).toLowerCase();
+      if ((renamed || moved) && !confirm(
+        `${renamed ? `Rename "${block.landOwnerName}" to "${newName}"` : ''}${renamed && moved ? ' and ' : ''}${moved ? `move ${block.farmBlockName} to parcel ${newParcel}` : ''}?\nOld reports are updated too.`)) {
+        return;
+      }
+
       btn.disabled = true;
       try {
+        const messages = [];
         if (lo.landOwnerId) {
-          await syncService.apiCall('UPDATE_LANDOWNER', {
+          const r = await syncService.apiCall('UPDATE_LANDOWNER', {
             landOwnerId: lo.landOwnerId,
             landOwnerNo: document.getElementById('ed-no').value,
             category: document.getElementById('ed-category').value,
-            contactPerson: document.getElementById('ed-contact').value,
+            landOwnerName: newName,
             phone: document.getElementById('ed-phone').value
           });
+          messages.push(r.message);
         }
-        await syncService.apiCall('UPDATE_BLOCK', {
+        const r2 = await syncService.apiCall('UPDATE_BLOCK', {
           blockId,
+          parcelNumber: newParcel,
           areaHa: document.getElementById('ed-area').value,
           palmCount: document.getElementById('ed-palms').value
         });
+        messages.push(r2.message);
         await syncService.pullMasterData();
+        if (renamed || moved) await syncService.pullReports();   // bring the renamed reports to this device
         this.closeModal('form-modal');
-        this.showToast('Saved.', 'success');
+        this.showToast(messages.join(' '), 'success');
         this.navigateTo('landowner-enrollment');
       } catch (err) {
         this.showToast(err.message, 'error');
