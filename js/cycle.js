@@ -81,7 +81,7 @@ Object.assign(FarmOpsApp.prototype, {
         landOwnerId: String(b.landOwnerId || ''),
         landOwnerName: b.landOwnerName,
         landOwnerNo: String(lo.landOwnerNo || b.landOwnerNo || ''),   // CLAIF Number, e.g. CLAIF-686
-        category: lo.category || b.category || 'Not Priority',
+        category: b.category || lo.category || 'Not Priority',   // v3.8: each sequence entry has its own category
         parcelNumber: b.parcelNumber,
         farmBlockName: b.farmBlockName,
         farmName: this.farmNameOf(b.farmBlockName),
@@ -214,7 +214,7 @@ Object.assign(FarmOpsApp.prototype, {
     // ---- Summary per Farm (Land Owner + Farm)
     const farms = new Map();
     rows.forEach((r) => {
-      const k = `${r.landOwnerId}|${r.farmName}`;
+      const k = `${r.landOwnerId}|${r.farmName}|${r.category}`;   // a land owner can have Priority and Not Priority sequences
       if (!farms.has(k)) farms.set(k, { landOwnerNo: r.landOwnerNo, landOwnerName: r.landOwnerName, farmName: r.farmName, category: r.category, rows: [] });
       farms.get(k).rows.push(r);
     });
@@ -472,7 +472,7 @@ Object.assign(FarmOpsApp.prototype, {
 
     const farms = new Map();
     rows.forEach((r) => {
-      const k = `${r.landOwnerId}|${r.farmName}`;
+      const k = `${r.landOwnerId}|${r.farmName}|${r.category}`;
       if (!farms.has(k)) farms.set(k, { r, rows: [] });
       farms.get(k).rows.push(r);
     });
@@ -561,6 +561,19 @@ Object.assign(FarmOpsApp.prototype, {
       </div>`;
 
     const anchor = container.querySelector('.stats-grid');
+    if (anchor) anchor.insertAdjacentHTML('afterend', html);
+    else container.insertAdjacentHTML('beforeend', html);
+  },
+
+  /** Dashboard: Priority / Not Priority / total sequences per Farm & Block (only the user's Farm & Blocks). */
+  async renderSequenceDashboardCard(container) {
+    await auth.refreshScope();
+    const all = (await db.getAll('farmsAndBlocks')).filter((b) => b.status !== 'Deactivated');
+    const entries = auth.hasAllBlocks() ? all : auth.getAuthorizedBlocks();
+    const html = this.sequenceSummaryHtml(entries, false);
+    if (!html) return;
+    const cycleCard = [...container.querySelectorAll('.card')].find((c) => c.textContent.includes('Cycle Progress'));
+    const anchor = cycleCard || container.querySelector('.stats-grid');
     if (anchor) anchor.insertAdjacentHTML('afterend', html);
     else container.insertAdjacentHTML('beforeend', html);
   }
