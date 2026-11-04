@@ -1021,7 +1021,7 @@ class FarmOpsApp {
                 <tr>
                   <td><strong>${r.date || 'Today'}</strong></td>
                   <td>${this.esc(r.activityType)}</td>
-                  <td>${this.esc(r.landOwnersName || '—')} &bull; ${this.esc(r.parcelNumber || '—')}</td>
+                  <td>${this.esc(r.landOwnersName || '—')}${r.landOwnerNo ? ` <span style="font-size:11px;color:var(--text-muted);">${this.esc(r.landOwnerNo)}</span>` : ''} &bull; ${this.esc(r.parcelNumber || '—')}</td>
                   <td>${this.esc(r.farmBlock || '—')}</td>
                   <td>${this.esc(r.manpower || r.manpowerCount || 1)} pax</td>
                   <td>
@@ -1562,7 +1562,7 @@ class FarmOpsApp {
       userId: auth.getUserId(),
       employeeName: auth.getEmployeeName(),
       date: document.getElementById('cust-date').value,
-      landOwnersName: document.getElementById('cust-landowner').value,
+      ...this.selectedLandownerFields('cust-landowner'),
       parcelNumber: document.getElementById('cust-parcel').value,
       farmBlock: document.getElementById('cust-block').value,
       manpower: parseFloat(document.getElementById('cust-manpower').value) || 1,
@@ -1734,7 +1734,12 @@ class FarmOpsApp {
     const e = (v) => this.esc(v);
     const uniq = (arr) => [...new Set(arr)].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
 
-    const lands = uniq(blocks.map((b) => b.landOwnerName));
+    // One entry per land owner (ID / CLAIF Number), so two land owners with the same name stay separate
+    const ownerKey = (b) => String(b.landOwnerId || b.landOwnerName);
+    const owners = [...new Map(blocks.map((b) => [ownerKey(b), b])).values()]
+      .sort((a, b) => String(a.landOwnerName).localeCompare(String(b.landOwnerName)) ||
+        String(a.landOwnerNo || '').localeCompare(String(b.landOwnerNo || ''), undefined, { numeric: true }));
+    const lands = owners.map(ownerKey);
     if (!lands.length) {
       landEl.innerHTML = `<option value="">-- No Farm & Block assigned to you --</option>`;
       parcelEl.innerHTML = `<option value="">--</option>`;
@@ -1743,17 +1748,18 @@ class FarmOpsApp {
     }
 
     landEl.innerHTML = `<option value="">-- Select Land Owner --</option>` +
-      lands.map((l) => `<option value="${e(l)}">${e(l)}</option>`).join('');
+      owners.map((b) => `<option value="${e(ownerKey(b))}" data-name="${e(b.landOwnerName)}" data-claif="${e(b.landOwnerNo || '')}">` +
+        `${e(b.landOwnerName)}${b.landOwnerNo ? ` – ${e(b.landOwnerNo)}` : ''}</option>`).join('');
 
     const updateBlocks = () => {
-      const filtered = blocks.filter((b) => b.landOwnerName === landEl.value && b.parcelNumber === parcelEl.value);
+      const filtered = blocks.filter((b) => ownerKey(b) === landEl.value && b.parcelNumber === parcelEl.value);
       blockEl.innerHTML = `<option value="">-- Select Farm & Block --</option>` +
         uniq(filtered.map((b) => b.farmBlockName)).map((n) => `<option value="${e(n)}">${e(n)}</option>`).join('');
       if (filtered.length === 1) blockEl.value = filtered[0].farmBlockName;
     };
 
     const updateParcels = () => {
-      const parcels = uniq(blocks.filter((b) => b.landOwnerName === landEl.value).map((b) => b.parcelNumber));
+      const parcels = uniq(blocks.filter((b) => ownerKey(b) === landEl.value).map((b) => b.parcelNumber));
       parcelEl.innerHTML = `<option value="">-- Select Parcel --</option>` +
         parcels.map((p) => `<option value="${e(p)}">${e(p)}</option>`).join('');
       if (parcels.length === 1) parcelEl.value = parcels[0];
@@ -1763,11 +1769,20 @@ class FarmOpsApp {
     landEl.onchange = updateParcels;
     parcelEl.onchange = updateBlocks;
 
-    if (preset.landOwner && lands.includes(preset.landOwner)) landEl.value = preset.landOwner;
+    const presetOwner = preset.landOwnerId || (preset.landOwner && (owners.find((b) => b.landOwnerName === preset.landOwner) || {}).landOwnerId);
+    if (presetOwner && lands.includes(String(presetOwner))) landEl.value = String(presetOwner);
     else if (lands.length === 1) landEl.value = lands[0];
     updateParcels();
     if (preset.parcelNumber) { parcelEl.value = preset.parcelNumber; updateBlocks(); }
     if (preset.farmBlock) blockEl.value = preset.farmBlock;
+  }
+
+  /** Land owner fields for a report, from a land owner select filled by populateCascadingDropdowns. */
+  selectedLandownerFields(selectId) {
+    const el = document.getElementById(selectId);
+    const opt = el && el.selectedOptions ? el.selectedOptions[0] : null;
+    if (!opt || !opt.value) return { landOwnersName: '', landOwnerNo: '' };
+    return { landOwnersName: opt.dataset.name || opt.textContent.trim(), landOwnerNo: opt.dataset.claif || '' };
   }
 
   /* ==========================================================================
@@ -1867,7 +1882,7 @@ class FarmOpsApp {
           <select id="kpi-block" class="form-control" required>
             <option value="">-- Select Farm & Block --</option>
             ${kpiBlocks.map((b) => `<option value="${e(b.blockId)}" ${kpi && b.farmBlockName === kpi.farmBlock && b.landOwnerName === kpi.landOwner && b.parcelNumber === kpi.parcelNumber ? 'selected' : ''}>
-              ${e(b.farmBlockName)} — ${e(b.landOwnerName)} › ${e(b.parcelNumber)}</option>`).join('')}
+              ${e(b.farmBlockName)} — ${e(b.landOwnerName)}${b.landOwnerNo ? ` (${e(b.landOwnerNo)})` : ''} › ${e(b.parcelNumber)}</option>`).join('')}
           </select>
         </div>
 
@@ -2102,7 +2117,7 @@ class FarmOpsApp {
       userId: auth.getUserId(),
       employeeName: auth.getEmployeeName(),
       date: document.getElementById('reg-date').value,
-      landOwnersName: document.getElementById('reg-landowner').value,
+      ...this.selectedLandownerFields('reg-landowner'),
       parcelNumber: document.getElementById('reg-parcel').value,
       farmBlock: document.getElementById('reg-block').value,
       manpower: parseFloat(document.getElementById('reg-manpower').value) || 1,
@@ -2238,7 +2253,7 @@ class FarmOpsApp {
       userId: auth.getUserId(),
       employeeName: auth.getEmployeeName(),
       date: document.getElementById('irreg-date').value,
-      landOwnersName: document.getElementById('irreg-landowner').value,
+      ...this.selectedLandownerFields('irreg-landowner'),
       parcelNumber: document.getElementById('irreg-parcel').value,
       farmBlock: document.getElementById('irreg-block').value,
       manpower: parseFloat(document.getElementById('irreg-manpower').value) || 1,
@@ -2342,7 +2357,7 @@ class FarmOpsApp {
       userId: auth.getUserId(),
       employeeName: auth.getEmployeeName(),
       date: document.getElementById('other-date').value,
-      landOwnersName: document.getElementById('other-landowner').value,
+      ...this.selectedLandownerFields('other-landowner'),
       parcelNumber: document.getElementById('other-parcel').value,
       farmBlock: document.getElementById('other-block').value,
       manpower: parseFloat(document.getElementById('other-manpower').value) || 1,
@@ -2471,7 +2486,7 @@ class FarmOpsApp {
       employeeName: auth.getEmployeeName(),
       timestamp: document.getElementById('palm-timestamp').value,
       date: new Date().toISOString().split('T')[0],
-      landOwnersName: document.getElementById('palm-landowner').value,
+      ...this.selectedLandownerFields('palm-landowner'),
       parcelNumber: document.getElementById('palm-parcel').value,
       farmBlock: document.getElementById('palm-block').value,
       palmNumber: document.getElementById('palm-number').value.trim(),
@@ -2617,7 +2632,7 @@ class FarmOpsApp {
       employeeName: auth.getEmployeeName(),
       date: document.getElementById('seed-date').value,
       areaCode: document.getElementById('seed-area-code').value.trim(),
-      landOwnersName: document.getElementById('seed-landowner').value,
+      ...this.selectedLandownerFields('seed-landowner'),
       parcelNumber: document.getElementById('seed-parcel').value,
       farmBlock: document.getElementById('seed-block').value,
       palmNumber: document.getElementById('seed-palm-number').value.trim(),
@@ -2757,7 +2772,7 @@ class FarmOpsApp {
       userId: auth.getUserId(),
       employeeName: auth.getEmployeeName(),
       date: document.getElementById('pest-date').value,
-      landOwnersName: document.getElementById('pest-landowner').value,
+      ...this.selectedLandownerFields('pest-landowner'),
       parcelNumber: document.getElementById('pest-parcel').value,
       palmNumbers: document.getElementById('pest-palms-range').value.trim(),
       farmBlock: document.getElementById('pest-block').value,
@@ -3545,8 +3560,9 @@ class FarmOpsApp {
     const landowners = await db.getAll('landowners');
     const parcels = await db.getAll('parcels');
     const e = (v) => this.esc(v);
-    const loByName = new Map(landowners.map((l) => [String(l.landOwnerName).toLowerCase(), l]));
-    const loOf = (b) => loByName.get(String(b.landOwnerName).toLowerCase()) || {};
+    // Land owners are identified by Land Owner ID / CLAIF Number — never by name
+    const loById = new Map(landowners.map((l) => [String(l.landOwnerId), l]));
+    const loOf = (b) => loById.get(String(b.landOwnerId)) || {};
     const isPriority = (lo) => lo && lo.category === 'Priority';
     const activeOwners = landowners.filter((l) => l.status !== 'Deactivated');
     const priorityCount = activeOwners.filter(isPriority).length;
@@ -3847,15 +3863,12 @@ class FarmOpsApp {
     if (!this._enr || this._enr.existing) return;
     const name = document.getElementById('enr-landowner').value.trim().toLowerCase();
     const help = document.getElementById('enr-name-help');
-    const lo = name ? this._enr.landowners.find((l) => String(l.landOwnerName).toLowerCase() === name) : null;
-    if (lo && lo.landOwnerNo) {
-      help.innerHTML = `Already enrolled as <strong>${this.esc(lo.landOwnerNo)}</strong> —
-        <a href="#" onclick="event.preventDefault(); document.getElementById('enr-no').value='${this.esc(lo.landOwnerNo)}'; app.lookupEnrollmentClaif();">use it</a>`;
-    } else if (lo) {
-      help.textContent = 'Existing land owner without a CLAIF Number: this CLAIF Number will be saved to it.';
-    } else {
-      help.textContent = '';
-    }
+    // Same name is allowed (each CLAIF Number is its own land owner). Just show who already has it.
+    const same = name ? this._enr.landowners.filter((l) => String(l.landOwnerName).toLowerCase() === name && l.landOwnerNo) : [];
+    help.innerHTML = same.length
+      ? `Same name already enrolled as: ${same.map((l) => `<a href="#" onclick="event.preventDefault(); document.getElementById('enr-no').value='${this.esc(l.landOwnerNo)}'; app.lookupEnrollmentClaif();">${this.esc(l.landOwnerNo)}</a>`).join(', ')}.
+         A new CLAIF Number creates a separate land owner.`
+      : '';
   }
 
   setEnrollmentExisting(lo) {
@@ -3886,7 +3899,7 @@ class FarmOpsApp {
 
     const e = (v) => this.esc(v);
     const prefix = lo.category === 'Priority' ? 'P-' : 'NP-';
-    const own = st.blocks.filter((b) => String(b.landOwnerName).toLowerCase() === String(lo.landOwnerName).toLowerCase())
+    const own = st.blocks.filter((b) => String(b.landOwnerId) === String(lo.landOwnerId))
       .sort((a, b) => (st.seqOf(a) || 999999) - (st.seqOf(b) || 999999) ||
         String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }));
     box.innerHTML = `
@@ -3920,16 +3933,16 @@ class FarmOpsApp {
     const category = document.getElementById('enr-category').value;
     if (!claif) errors.push('CLAIF Number must be a word and a number, e.g. CLAIF-686.');
     if (!name) errors.push('Land Owner Name is required.');
-    if (!st.existing && name) {
-      const other = (st.landowners || []).find((l) => String(l.landOwnerName).toLowerCase() === name.toLowerCase() && l.landOwnerNo);
-      if (other) errors.push(`"${other.landOwnerName}" is already enrolled as ${other.landOwnerNo}. Enter that CLAIF Number to add blocks.`);
-    }
-
-    // Parcels already used by this land owner (active blocks)
-    const ownerName = (st.existing ? st.existing.landOwnerName : name).toLowerCase();
+    // Parcels already used by THIS land owner (by Land Owner ID; a new CLAIF Number has none yet)
+    const ownerId = st.existing ? String(st.existing.landOwnerId) : null;
     const usedParcels = new Set((st.blocks || [])
-      .filter((b) => String(b.landOwnerName).toLowerCase() === ownerName && b.status !== 'Deactivated')
+      .filter((b) => ownerId && String(b.landOwnerId) === ownerId && b.status !== 'Deactivated')
       .map((b) => String(b.parcelNumber).trim().toLowerCase()));
+    // Another land owner with the same name must not have the same Parcel + Farm & Block (reports would mix)
+    const ownerName = (st.existing ? st.existing.landOwnerName : name).trim().toLowerCase();
+    const clashOf = (parcel, block) => (st.blocks || []).find((b) => String(b.landOwnerId) !== String(ownerId) && b.status !== 'Deactivated' &&
+      String(b.landOwnerName).trim().toLowerCase() === ownerName && String(b.parcelNumber).trim().toLowerCase() === parcel &&
+      String(b.farmBlockName).trim().toLowerCase() === String(block).trim().toLowerCase());
 
     const seen = new Set();
     const entries = [];
@@ -3955,6 +3968,10 @@ class FarmOpsApp {
       const pk = en.parcelNumber.toLowerCase();
       if (pk && seen.has(pk)) rowErr.push(`Parcel ${en.parcelNumber} is entered twice`);
       else if (pk && usedParcels.has(pk)) rowErr.push(`Parcel ${en.parcelNumber} is already enrolled under this land owner`);
+      else if (pk && en.farmBlock && clashOf(pk, en.farmBlock)) {
+        const c = clashOf(pk, en.farmBlock);
+        rowErr.push(`another ${c.landOwnerName} (${c.landOwnerNo || c.landOwnerId}) already has ${en.parcelNumber} › ${en.farmBlock} — use a different parcel number`);
+      }
       if (pk) seen.add(pk);
       if (rowErr.length) {
         row.classList.add('has-error');
@@ -4054,16 +4071,17 @@ class FarmOpsApp {
   async openEditEnrollmentModal(blockId) {
     const block = await db.get('farmsAndBlocks', blockId);
     if (!block) return;
-    const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerName).toLowerCase() === String(block.landOwnerName).toLowerCase()) || {};
+    // Only THIS land owner (by Land Owner ID) — others with the same name are not touched
+    const lo = (await db.getAll('landowners')).find((l) => String(l.landOwnerId) === String(block.landOwnerId)) || {};
     const ownerParcels = (await db.getAll('parcels'))
-      .filter((p) => String(p.landOwnerName).toLowerCase() === String(block.landOwnerName).toLowerCase() && p.status !== 'Deactivated')
+      .filter((p) => String(p.landOwnerId) === String(block.landOwnerId) && p.status !== 'Deactivated')
       .map((p) => p.parcelNumber);
     const e = (v) => this.esc(v);
     const currentSeq = parseInt(block.sequenceNo, 10) || parseInt(lo.sequenceNo, 10) || '';
 
-    document.getElementById('form-modal-title').textContent = `Edit: ${block.landOwnerName} › ${block.parcelNumber} › ${block.farmBlockName}`;
+    document.getElementById('form-modal-title').textContent = `Edit: ${block.landOwnerName}${lo.landOwnerNo ? ` (${lo.landOwnerNo})` : ''} › ${block.parcelNumber} › ${block.farmBlockName}`;
     document.getElementById('form-modal-body').innerHTML = `
-      <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">🏡 Land Owner (applies to all of ${e(block.landOwnerName)}'s blocks)</div>
+      <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">🏡 Land Owner ${e(lo.landOwnerNo || '')} (applies only to this CLAIF Number's blocks)</div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label required">CLAIF Number</label>
@@ -4082,7 +4100,7 @@ class FarmOpsApp {
         <div class="form-group">
           <label class="form-label required">Land Owner Name</label>
           <input type="text" id="ed-name" class="form-control" maxlength="120" value="${e(block.landOwnerName)}" />
-          <div class="form-helper">Renaming also updates this land owner's parcels, blocks, reports and KPIs.</div>
+          <div class="form-helper">Renaming updates only this CLAIF Number's parcels, blocks, reports and KPIs.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Phone</label>
@@ -4187,20 +4205,72 @@ class FarmOpsApp {
      worker is found automatically from the blocks they share.
      ========================================================================== */
 
+  /* ---------- Farm & Block codes (same rule as the server): "Farm 04 Block 1" -> "F04-B01" ---------- */
+  farmBlockCodeOf(name) {
+    const s = String(name == null ? '' : name).trim();
+    const m = s.match(/farm\s*[-#:.]?\s*0*(\d+)[\s\-–,/_.]*(?:block|blk)\s*[-#:.]?\s*0*(\d+)/i);
+    if (m) return `F${String(parseInt(m[1], 10)).padStart(2, '0')}-B${String(parseInt(m[2], 10)).padStart(2, '0')}`;
+    return `N:${s.toLowerCase().replace(/\s+/g, ' ')}`;
+  }
+
+  /** Farm & Block of a block row: { code, farmCode, farm, block, full }. */
+  farmBlockInfo(b) {
+    const name = String(b.farmBlockName || '').trim();
+    const code = b.farmBlockCode || this.farmBlockCodeOf(name);
+    const m = code.match(/^F(\d+)-B(\d+)$/);
+    if (m) {
+      const blockNo = parseInt(m[2], 10);
+      return { code, farmCode: `F${m[1]}`, farm: `Farm ${m[1]}`, block: `Block ${blockNo}`, blockNo, full: `Farm ${m[1]} – Block ${blockNo}` };
+    }
+    const f = name.match(/^(.*?)[\s\-–,/]*\b((?:block|blk)\b.*)$/i);
+    const farm = f && f[1].trim() ? f[1].trim() : (name || 'Other');
+    return { code, farmCode: `N:${farm.toLowerCase()}`, farm, block: f && f[1].trim() ? f[2].trim() : name, blockNo: 0, full: name };
+  }
+
+  /** Codes a user is assigned to (newer servers send them; older data: from the block IDs). */
+  userFarmBlockCodes(u, blocks) {
+    if (Array.isArray(u.assignedFarmBlockCodes) && u.assignedFarmBlockCodes.length) return u.assignedFarmBlockCodes;
+    const ids = u.assignedFarmAndBlocks || [];
+    if (ids.includes('ALL')) return ['ALL'];
+    const byId = new Map(blocks.map((b) => [b.blockId, b]));
+    return [...new Set(ids.map((id) => (byId.get(id) ? this.farmBlockInfo(byId.get(id)).code : id)))];
+  }
+
+  /** All Farm & Blocks (one entry per code, covering every land owner / parcel in it), grouped by farm. */
+  buildFarmBlockCatalog(blocks) {
+    const codes = new Map();
+    blocks.forEach((b) => {
+      const info = this.farmBlockInfo(b);
+      if (!codes.has(info.code)) codes.set(info.code, { ...info, owners: new Set(), rows: 0 });
+      const c = codes.get(info.code);
+      c.owners.add(b.landOwnerId || b.landOwnerName);
+      c.rows++;
+    });
+    const farms = new Map();
+    [...codes.values()].forEach((c) => {
+      if (!farms.has(c.farmCode)) farms.set(c.farmCode, { farmCode: c.farmCode, farm: c.farm, blocks: [] });
+      farms.get(c.farmCode).blocks.push(c);
+    });
+    const list = [...farms.values()].sort((a, b) => a.farm.localeCompare(b.farm, undefined, { numeric: true }));
+    list.forEach((f) => f.blocks.sort((a, b) => (a.blockNo - b.blockNo) || a.block.localeCompare(b.block, undefined, { numeric: true })));
+    return { farms: list, codes };
+  }
+
   async renderUserManagementView(container) {
     const users = await db.getAll('userDirectory');
     const blocks = await db.getAll('farmsAndBlocks');
-    const blockName = new Map(blocks.map((b) => [b.blockId, `${b.farmBlockName} (${b.landOwnerName} › ${b.parcelNumber})`]));
+    const catalog = this.buildFarmBlockCatalog(blocks);
+    const codeLabel = (c) => (catalog.codes.get(c) ? catalog.codes.get(c).full : String(c).replace(/^N:/, ''));
     const e = (v) => this.esc(v);
 
     const roleOrder = { Administrator: 0, Supervisor: 1, 'Field Personnel': 2 };
     users.sort((a, b) => (roleOrder[a.role] - roleOrder[b.role]) || String(a.fullName).localeCompare(String(b.fullName)));
 
     const blocksLabel = (u) => {
-      const ids = u.assignedFarmAndBlocks || [];
-      if (ids.includes('ALL')) return '<em>All Farm &amp; Blocks</em>';
-      if (!ids.length) return '<span class="badge badge-behind">None</span>';
-      return ids.map((id) => `<div style="font-size:12px;">• ${e(blockName.get(id) || id)}</div>`).join('');
+      const codes = this.userFarmBlockCodes(u, blocks);
+      if (codes.includes('ALL')) return '<em>All Farm &amp; Blocks</em>';
+      if (!codes.length) return '<span class="badge badge-behind">None</span>';
+      return codes.map((c) => `<div style="font-size:12px;">• ${e(codeLabel(c))}</div>`).join('');
     };
 
     container.innerHTML = `
@@ -4208,7 +4278,8 @@ class FarmOpsApp {
         <div>
           <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">User Management &amp; Permissions</h2>
           <p style="font-size: 13.5px; color: var(--text-muted);">
-            Assign each Supervisor and Field Personnel to Farm &amp; Blocks. A Field Personnel's supervisor is detected automatically.
+            Assign each Supervisor and Field Personnel to Farm &amp; Blocks. They automatically see every land owner and parcel
+            enrolled under those Farm &amp; Blocks (now and later). A Field Personnel's supervisor is detected automatically.
           </p>
         </div>
         <div style="display:flex;gap:8px;">
@@ -4250,7 +4321,7 @@ class FarmOpsApp {
             <tbody>
               ${users.length === 0 ? `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">No users loaded. Click Refresh while online.</td></tr>` : users.map((u) => `
                 <tr class="usr-row" data-role="${e(u.role)}"
-                    data-search="${e([u.fullName, u.username, u.employeeId, (u.assignedFarmAndBlocks || []).map((id) => blockName.get(id) || id).join(' ')].join(' ').toLowerCase())}">
+                    data-search="${e([u.fullName, u.username, u.employeeId, this.userFarmBlockCodes(u, blocks).map(codeLabel).join(' ')].join(' ').toLowerCase())}">
                   <td><code>${e(u.employeeId)}</code></td>
                   <td><strong>${e(u.fullName)}</strong></td>
                   <td>${e(u.username)}</td>
@@ -4356,19 +4427,50 @@ class FarmOpsApp {
       </div>
 
       <div id="usr-blocks-wrap" class="form-group">
+        <style>
+          .fb-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+          .fb-tools input { flex: 1 1 200px; }
+          .fb-farm { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; background: var(--bg-surface); }
+          .fb-farm-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; font-weight: 700; font-size: 13.5px; color: var(--palm-dark); }
+          .fb-farm-head .fb-count { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+          .fb-farm-head .fb-caret { transition: transform .15s; }
+          .fb-farm.open .fb-caret { transform: rotate(90deg); }
+          .fb-blocks { display: none; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; padding: 0 12px 10px 36px; }
+          .fb-farm.open .fb-blocks { display: grid; }
+          .fb-block { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; padding: 6px 8px; border-radius: 6px; background: var(--bg-hover); }
+          .fb-block small { display: block; font-size: 11px; color: var(--text-muted); }
+          .fb-block.taken { opacity: 0.55; }
+          .fb-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 8px; }
+          .fb-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--palm-subtle); border: 1px solid var(--palm-border); color: var(--palm-dark); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12px; font-weight: 600; }
+          .fb-chip button { border: 0; background: transparent; cursor: pointer; color: var(--palm-dark); font-size: 13px; line-height: 1; padding: 2px 6px; }
+          @media (max-width: 540px) { .fb-blocks { grid-template-columns: 1fr 1fr; padding-left: 12px; } .fb-tools .btn { flex: 1 1 120px; } }
+        </style>
         <label class="form-label required">Assigned Farm &amp; Blocks</label>
-        <input type="text" id="usr-block-search" class="form-control" placeholder="🔍 Filter blocks..." oninput="app.filterUserBlockPicker()" style="margin-bottom:8px;" />
-        <div id="usr-block-picker" style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-md);padding:8px 12px;"></div>
+        <div class="form-helper" style="margin:-2px 0 8px;">Covers every land owner and parcel under the chosen Farm &amp; Blocks, including ones enrolled later.</div>
+        <div class="fb-tools">
+          <input type="text" id="usr-block-search" class="form-control" placeholder="🔍 Search farm or block (e.g. Farm 04, Block 2)..." oninput="app.filterUserBlockPicker()" />
+          <button type="button" class="btn btn-outline" onclick="app.selectAllUserFarmBlocks()">✔ Select All Farms &amp; Blocks</button>
+          <button type="button" class="btn btn-outline" onclick="app.clearUserFarmBlocks()">Clear Selection</button>
+        </div>
+        <div id="usr-fb-chips" class="fb-chips"></div>
+        <div id="usr-block-picker" style="max-height:340px;overflow:auto;"></div>
         <div id="usr-auto-supervisor" class="form-helper" style="margin-top:8px;"></div>
       </div>
     `;
 
+    const catalog = this.buildFarmBlockCatalog(blocks);
+    const startCodes = user ? this.userFarmBlockCodes(user, await db.getAll('farmsAndBlocks')) : [];
     this._userModal = {
       user,
       users,
       blocks,
-      selected: new Set(user && !(user.assignedFarmAndBlocks || []).includes('ALL') ? user.assignedFarmAndBlocks : [])
+      catalog,
+      open: new Set(),
+      // only Farm & Block codes; duplicates are impossible in a Set
+      selected: new Set(startCodes.includes('ALL') ? [...catalog.codes.keys()] : startCodes)
     };
+    // open the farms that already have a selection
+    catalog.farms.forEach((f) => { if (f.blocks.some((b) => this._userModal.selected.has(b.code))) this._userModal.open.add(f.farmCode); });
     this.renderUserBlockPicker();
 
     const submitBtn = document.getElementById('form-modal-submit-btn');
@@ -4381,12 +4483,15 @@ class FarmOpsApp {
     document.querySelectorAll('.usr-act').forEach((cb) => { if (cb.value !== 'ALL') cb.checked = el.checked; });
   }
 
-  /** Map blockId -> supervisor user (excluding the user being edited). */
-  getSupervisorByBlock(excludeUserId) {
+  /** Map Farm & Block code -> supervisor user (excluding the user being edited). */
+  getSupervisorByCode(excludeUserId) {
     const map = new Map();
-    (this._userModal ? this._userModal.users : []).forEach((u) => {
+    const m = this._userModal;
+    if (!m) return map;
+    m.users.forEach((u) => {
       if (u.role !== 'Supervisor' || u.accountStatus !== 'Active' || u.userId === excludeUserId) return;
-      (u.assignedFarmAndBlocks || []).forEach((id) => map.set(id, u));
+      const codes = this.userFarmBlockCodes(u, m.blocks);
+      (codes.includes('ALL') ? [...m.catalog.codes.keys()] : codes).forEach((c) => map.set(c, u));
     });
     return map;
   }
@@ -4408,50 +4513,127 @@ class FarmOpsApp {
     wrap.style.display = '';
     actWrap.style.display = '';
 
-    const supByBlock = this.getSupervisorByBlock(m.user ? m.user.userId : null);
+    const supByCode = this.getSupervisorByCode(m.user ? m.user.userId : null);
+    m.taken = new Set(role === 'Supervisor' ? [...supByCode.keys()] : []);
 
-    // Group blocks by "Land Owner › Parcel"
-    const groups = {};
-    m.blocks.forEach((b) => {
-      const g = `${b.landOwnerName} › ${b.parcelNumber}`;
-      (groups[g] = groups[g] || []).push(b);
-    });
-
-    picker.innerHTML = Object.keys(groups).sort().map((g) => `
-      <div class="usr-block-group" style="margin-bottom:10px;">
-        <div style="font-weight:700;font-size:12.5px;color:var(--palm-dark);margin-bottom:4px;">🏡 ${e(g)}</div>
-        ${groups[g].map((b) => {
-          const sup = supByBlock.get(b.blockId);
-          const takenBySup = role === 'Supervisor' && sup;
-          return `
-          <label class="usr-block-item" data-search="${e((g + ' ' + b.farmBlockName).toLowerCase())}"
-                 style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;${takenBySup ? 'opacity:0.55;' : ''}">
-            <input type="checkbox" class="usr-block-cb" value="${e(b.blockId)}"
-                   ${m.selected.has(b.blockId) ? 'checked' : ''} ${takenBySup && !m.selected.has(b.blockId) ? 'disabled' : ''}
-                   onchange="app.onUserBlockToggle(this)" />
-            <span>${e(b.farmBlockName)}</span>
-            <span style="font-size:11px;color:var(--text-muted);">
-              ${sup ? `👤 ${e(sup.fullName)}${takenBySup ? ' (already supervisor)' : ''}` : '<em>no supervisor</em>'}
-            </span>
-          </label>`;
-        }).join('')}
+    picker.innerHTML = m.catalog.farms.map((f) => `
+      <div class="fb-farm ${m.open.has(f.farmCode) ? 'open' : ''}" data-farm="${e(f.farmCode)}"
+           data-search="${e([f.farm, ...f.blocks.map((b) => `${b.full} ${b.block}`)].join(' ').toLowerCase())}">
+        <div class="fb-farm-head" onclick="app.toggleUserFarmOpen(event, '${e(f.farmCode)}')">
+          <span class="fb-caret">▶</span>
+          <input type="checkbox" class="fb-farm-cb" data-farm="${e(f.farmCode)}" onclick="event.stopPropagation()"
+                 onchange="app.onUserFarmToggle('${e(f.farmCode)}', this.checked)" title="Select every block of ${e(f.farm)}" />
+          <span>🌴 ${e(f.farm)}</span>
+          <span class="fb-count" data-count="${e(f.farmCode)}"></span>
+        </div>
+        <div class="fb-blocks">
+          ${f.blocks.map((b) => {
+            const sup = supByCode.get(b.code);
+            const taken = m.taken.has(b.code);
+            return `
+            <label class="fb-block ${taken && !m.selected.has(b.code) ? 'taken' : ''}" data-search="${e(`${b.full} ${b.block} ${f.farm}`.toLowerCase())}">
+              <input type="checkbox" class="usr-block-cb" value="${e(b.code)}" data-farm="${e(f.farmCode)}"
+                     ${m.selected.has(b.code) ? 'checked' : ''} ${taken && !m.selected.has(b.code) ? 'disabled' : ''}
+                     onchange="app.onUserBlockToggle(this)" />
+              <span><strong>${e(b.block)}</strong>
+                <small>${b.owners.size} land owner(s) &bull; ${b.rows} parcel/block(s)</small>
+                <small>${sup ? `👤 ${e(sup.fullName)}${taken ? ' (already supervisor)' : ''}` : '<em>no supervisor</em>'}</small>
+              </span>
+            </label>`;
+          }).join('')}
+        </div>
       </div>
     `).join('') || '<div style="color:var(--text-muted);font-size:13px;">No active Farm &amp; Blocks. Enroll land owners first.</div>';
 
     this.filterUserBlockPicker();
-    this.updateAutoSupervisorHint();
+    this.refreshUserFarmBlockState();
+  }
+
+  toggleUserFarmOpen(ev, farmCode) {
+    if (ev.target.closest('input')) return;
+    const m = this._userModal;
+    if (m.open.has(farmCode)) m.open.delete(farmCode); else m.open.add(farmCode);
+    document.querySelector(`.fb-farm[data-farm="${CSS.escape(farmCode)}"]`)?.classList.toggle('open', m.open.has(farmCode));
+  }
+
+  onUserFarmToggle(farmCode, checked) {
+    const m = this._userModal;
+    const farm = m.catalog.farms.find((f) => f.farmCode === farmCode);
+    if (!farm) return;
+    farm.blocks.forEach((b) => {
+      if (checked && !m.taken.has(b.code)) m.selected.add(b.code);
+      if (!checked) m.selected.delete(b.code);
+    });
+    m.open.add(farmCode);
+    this.syncUserFarmBlockCheckboxes();
   }
 
   onUserBlockToggle(cb) {
     if (cb.checked) this._userModal.selected.add(cb.value);
     else this._userModal.selected.delete(cb.value);
+    this.refreshUserFarmBlockState();
+  }
+
+  selectAllUserFarmBlocks() {
+    const m = this._userModal;
+    m.catalog.codes.forEach((c, code) => { if (!m.taken.has(code)) m.selected.add(code); });
+    this.syncUserFarmBlockCheckboxes();
+    if (m.taken.size) this.showToast('Blocks that already have a supervisor were skipped.', 'info');
+  }
+
+  clearUserFarmBlocks() {
+    this._userModal.selected.clear();
+    this.syncUserFarmBlockCheckboxes();
+  }
+
+  removeUserFarmBlock(code) {
+    this._userModal.selected.delete(code);
+    this.syncUserFarmBlockCheckboxes();
+  }
+
+  syncUserFarmBlockCheckboxes() {
+    const m = this._userModal;
+    document.querySelectorAll('.usr-block-cb').forEach((cb) => { cb.checked = m.selected.has(cb.value); });
+    document.querySelectorAll('.fb-farm').forEach((el) => el.classList.toggle('open', m.open.has(el.dataset.farm)));
+    this.refreshUserFarmBlockState();
+  }
+
+  /** Farm checkboxes (full / partial), per-farm counts, the selected chips and the supervisor hint. */
+  refreshUserFarmBlockState() {
+    const m = this._userModal;
+    if (!m) return;
+    const e = (v) => this.esc(v);
+    m.catalog.farms.forEach((f) => {
+      const n = f.blocks.filter((b) => m.selected.has(b.code)).length;
+      const cb = document.querySelector(`.fb-farm-cb[data-farm="${CSS.escape(f.farmCode)}"]`);
+      if (cb) { cb.checked = n > 0 && n === f.blocks.length; cb.indeterminate = n > 0 && n < f.blocks.length; }
+      const cnt = document.querySelector(`[data-count="${CSS.escape(f.farmCode)}"]`);
+      if (cnt) cnt.textContent = `${n} / ${f.blocks.length} block(s)`;
+    });
+    const chips = document.getElementById('usr-fb-chips');
+    if (chips) {
+      const sel = [...m.selected].map((c) => m.catalog.codes.get(c) || { code: c, full: String(c).replace(/^N:/, ''), farm: '', blockNo: 0 })
+        .sort((a, b) => String(a.farm).localeCompare(String(b.farm), undefined, { numeric: true }) || (a.blockNo - b.blockNo) || String(a.full).localeCompare(String(b.full)));
+      chips.innerHTML = sel.length
+        ? sel.map((c) => `<span class="fb-chip">${e(c.full)}<button type="button" title="Remove" onclick="app.removeUserFarmBlock('${e(c.code)}')">✕</button></span>`).join('')
+        : '<span class="form-helper">No Farm &amp; Block selected yet.</span>';
+    }
     this.updateAutoSupervisorHint();
   }
 
   filterUserBlockPicker() {
     const q = (document.getElementById('usr-block-search')?.value || '').trim().toLowerCase();
-    document.querySelectorAll('.usr-block-item').forEach((el) => {
-      el.style.display = !q || el.dataset.search.includes(q) ? 'flex' : 'none';
+    document.querySelectorAll('.fb-farm').forEach((farm) => {
+      const farmHit = !q || farm.dataset.search.includes(q);
+      let anyBlock = false;
+      farm.querySelectorAll('.fb-block').forEach((el) => {
+        const hit = !q || el.dataset.search.includes(q) || farm.querySelector('.fb-farm-head').textContent.toLowerCase().includes(q);
+        el.style.display = hit ? '' : 'none';
+        if (hit) anyBlock = true;
+      });
+      farm.style.display = farmHit || anyBlock ? '' : 'none';
+      if (q && (farmHit || anyBlock)) farm.classList.add('open');
+      else if (!q) farm.classList.toggle('open', this._userModal.open.has(farm.dataset.farm));
     });
   }
 
@@ -4464,8 +4646,8 @@ class FarmOpsApp {
       hint.innerHTML = `${count} Farm &amp; Block(s) selected. Field Personnel in these blocks will report to this supervisor automatically.`;
       return;
     }
-    const supByBlock = this.getSupervisorByBlock(null);
-    const names = [...new Set([...this._userModal.selected].map((id) => supByBlock.get(id)).filter(Boolean).map((u) => u.fullName))];
+    const supByCode = this.getSupervisorByCode(null);
+    const names = [...new Set([...this._userModal.selected].map((c) => supByCode.get(c)).filter(Boolean).map((u) => u.fullName))];
     hint.innerHTML = `${count} Farm &amp; Block(s) selected. <strong>Auto supervisor:</strong> ${names.length ? this.esc(names.join(', ')) : '<em>none yet — assign a Supervisor to these blocks</em>'}`;
   }
 
@@ -4580,7 +4762,7 @@ class FarmOpsApp {
                   <td><code>${this.esc(r.reportId)}</code></td>
                   <td>${this.esc(r.date || '—')}</td>
                   <td><strong>${this.esc(r.activityType)}</strong></td>
-                  <td>${this.esc(r.landOwnersName || '—')} &bull; ${this.esc(r.parcelNumber || '—')}</td>
+                  <td>${this.esc(r.landOwnersName || '—')}${r.landOwnerNo ? ` <span style="font-size:11px;color:var(--text-muted);">${this.esc(r.landOwnerNo)}</span>` : ''} &bull; ${this.esc(r.parcelNumber || '—')}</td>
                   <td>${this.esc(r.farmBlock || '—')}</td>
                   <td>${this.esc(r.manpower || r.manpowerCount || 1)}</td>
                   <td>
@@ -4624,12 +4806,13 @@ class FarmOpsApp {
 
     const customDefs = await this.getCustomActivities(true);
     const q = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-    const headers = ['Report ID', 'Unique UUID', 'Activity Type', 'Date', 'Landowner', 'Parcel', 'Block', 'Manpower', 'Details', 'Remarks', 'Device ID', 'Sync Status'];
+    const headers = ['Report ID', 'Unique UUID', 'Activity Type', 'Date', 'CLAIF Number', 'Landowner', 'Parcel', 'Block', 'Manpower', 'Details', 'Remarks', 'Device ID', 'Sync Status'];
     const rows = reports.map((r) => [
       q(r.reportId),
       q(r.uniqueUuid || ''),
       q(r.activityType),
       q(r.date || ''),
+      q(r.landOwnerNo || ''),
       q(r.landOwnersName || ''),
       q(r.parcelNumber || ''),
       q(r.farmBlock || ''),
@@ -4665,13 +4848,14 @@ class FarmOpsApp {
       <body>
         <table border="1">
           <tr style="background:#14532d;color:#ffffff;font-weight:bold;">
-            <th>Report ID</th><th>Date</th><th>Activity Type</th><th>Landowner</th><th>Parcel</th><th>Farm Block</th><th>Manpower</th><th>Details</th><th>Remarks</th><th>Device ID</th><th>Status</th>
+            <th>Report ID</th><th>Date</th><th>Activity Type</th><th>CLAIF Number</th><th>Landowner</th><th>Parcel</th><th>Farm Block</th><th>Manpower</th><th>Details</th><th>Remarks</th><th>Device ID</th><th>Status</th>
           </tr>
           ${reports.map((r) => `
             <tr>
               <td>${this.esc(r.reportId)}</td>
               <td>${this.esc(r.date || '')}</td>
               <td>${this.esc(r.activityType)}</td>
+              <td>${this.esc(r.landOwnerNo || '')}</td>
               <td>${this.esc(r.landOwnersName || '')}</td>
               <td>${this.esc(r.parcelNumber || '')}</td>
               <td>${this.esc(r.farmBlock || '')}</td>
