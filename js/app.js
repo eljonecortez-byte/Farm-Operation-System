@@ -3535,10 +3535,10 @@ class FarmOpsApp {
     const e = (v) => this.esc(v);
     const loByName = new Map(landowners.map((l) => [String(l.landOwnerName).toLowerCase(), l]));
     const loOf = (b) => loByName.get(String(b.landOwnerName).toLowerCase()) || {};
-    const nextNo = landowners.reduce((m, l) => Math.max(m, parseInt(l.landOwnerNo, 10) || 0), 0) + 1;
+    const claifPrefix = 'CLAIF-';
 
     blocks.sort((a, b) =>
-      ((parseInt(loOf(a).landOwnerNo, 10) || 9999) - (parseInt(loOf(b).landOwnerNo, 10) || 9999)) ||
+      this.compareClaif(loOf(a).landOwnerNo, loOf(b).landOwnerNo) ||
       String(a.landOwnerName).localeCompare(String(b.landOwnerName)) ||
       String(a.parcelNumber).localeCompare(String(b.parcelNumber), undefined, { numeric: true }) ||
       String(a.farmBlockName).localeCompare(String(b.farmBlockName), undefined, { numeric: true })
@@ -3580,9 +3580,10 @@ class FarmOpsApp {
         <form id="enroll-form" onsubmit="event.preventDefault(); app.submitLandownerEnrollment();">
           <div class="form-grid-3">
             <div class="form-group">
-              <label class="form-label required">Land Owner No.</label>
-              <input type="number" id="enr-no" class="form-control" min="1" step="1" value="${nextNo}" required />
-              <div class="form-helper">Next free number: ${nextNo}</div>
+              <label class="form-label required">CLAIF Number</label>
+              <input type="text" id="enr-no" class="form-control" maxlength="30" value="${claifPrefix}"
+                     placeholder="e.g. CLAIF-686" required autocapitalize="characters" title="Word and number, e.g. CLAIF-686" />
+              <div class="form-helper">Word and number, e.g. CLAIF-686. Must be unique.</div>
             </div>
             <div class="form-group">
               <label class="form-label required">Land Owner Name</label>
@@ -3632,7 +3633,7 @@ class FarmOpsApp {
       </div>
 
       <div class="filter-toolbar">
-        <input type="text" id="enr-search" class="form-control" placeholder="🔍 Search no., land owner, parcel, block or supervisor..." oninput="app.filterEnrollmentTable()" />
+        <input type="text" id="enr-search" class="form-control" placeholder="🔍 Search CLAIF no., land owner, parcel, block or supervisor..." oninput="app.filterEnrollmentTable()" />
         <select id="enr-status" class="form-control" onchange="app.filterEnrollmentTable()">
           <option value="Active">Active only</option>
           <option value="ALL">All statuses</option>
@@ -3648,7 +3649,7 @@ class FarmOpsApp {
           <table class="table">
             <thead>
               <tr>
-                <th>No.</th>
+                <th>CLAIF No.</th>
                 <th>Land Owner</th>
                 <th>Category</th>
                 <th>Parcel</th>
@@ -3697,7 +3698,7 @@ class FarmOpsApp {
 
     this._enrollParcels = parcels;
     this._enrollLandowners = landowners;
-    this._enrollNextNo = nextNo;
+    this._enrollNextNo = claifPrefix;
     this.filterEnrollmentTable();
   }
 
@@ -3782,8 +3783,9 @@ class FarmOpsApp {
       <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">🏡 Land Owner (applies to all of ${e(block.landOwnerName)}'s blocks)</div>
       <div class="form-grid-2">
         <div class="form-group">
-          <label class="form-label required">Land Owner No.</label>
-          <input type="number" id="ed-no" class="form-control" min="1" step="1" value="${e(lo.landOwnerNo || '')}" />
+          <label class="form-label required">CLAIF Number</label>
+          <input type="text" id="ed-no" class="form-control" maxlength="30" value="${e(lo.landOwnerNo || 'CLAIF-')}"
+                 placeholder="e.g. CLAIF-686" autocapitalize="characters" />
         </div>
         <div class="form-group">
           <label class="form-label">Category</label>
