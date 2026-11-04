@@ -3537,17 +3537,18 @@ class FarmOpsApp {
     const loOf = (b) => loByName.get(String(b.landOwnerName).toLowerCase()) || {};
     const claifPrefix = 'CLAIF-';
 
-    // Enrollment sequence: separate numbering for Priority (1, 2, 3...) and Not Priority (1, 2, 3...),
-    // in the order the land owners were enrolled.
+    // Sequence No.: typed by the admin, counted separately for Priority (P-1, P-2...) and Not Priority (NP-1, NP-2...)
     const isPriority = (lo) => lo && lo.category === 'Priority';
     const seqOf = new Map();
-    const seqLandowners = landowners
-      .filter((l) => l.status !== 'Deactivated')
-      .sort((a, b) =>
-        String(a.dateEnrolled || '').localeCompare(String(b.dateEnrolled || '')) ||
-        String(a.landOwnerId).localeCompare(String(b.landOwnerId), undefined, { numeric: true }));
     let pSeq = 0, nSeq = 0;
-    seqLandowners.forEach((l) => seqOf.set(String(l.landOwnerName).toLowerCase(), isPriority(l) ? ++pSeq : ++nSeq));
+    const nextSeq = { 'Priority': 1, 'Not Priority': 1 };
+    landowners.filter((l) => l.status !== 'Deactivated').forEach((l) => {
+      const n = parseInt(l.sequenceNo, 10) || 0;
+      if (n) seqOf.set(String(l.landOwnerName).toLowerCase(), n);
+      const cat = isPriority(l) ? 'Priority' : 'Not Priority';
+      if (cat === 'Priority') pSeq++; else nSeq++;
+      nextSeq[cat] = Math.max(nextSeq[cat], n + 1);
+    });
     const seqOfBlock = (b) => seqOf.get(String(b.landOwnerName).toLowerCase()) || 9999;
 
     // Priority first, then Not Priority; inside each group by enrollment sequence
@@ -3595,7 +3596,7 @@ class FarmOpsApp {
           </div>
         </div>
         <form id="enroll-form" onsubmit="event.preventDefault(); app.submitLandownerEnrollment();">
-          <div class="form-grid-3">
+          <div class="form-grid-2">
             <div class="form-group">
               <label class="form-label required">CLAIF Number</label>
               <input type="text" id="enr-no" class="form-control" maxlength="30" value="${claifPrefix}"
@@ -3610,12 +3611,22 @@ class FarmOpsApp {
                 ${landowners.map((l) => `<option value="${e(l.landOwnerName)}"></option>`).join('')}
               </datalist>
             </div>
+          </div>
+          <div class="form-grid-2">
             <div class="form-group">
               <label class="form-label required">Category</label>
-              <select id="enr-category" class="form-control">
+              <select id="enr-category" class="form-control" onchange="app.updateEnrollmentSequence()">
                 <option value="Not Priority">Not Priority</option>
                 <option value="Priority">Priority</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Sequence No.</label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span id="enr-seq-prefix" style="font-weight:700;min-width:34px;">NP-</span>
+                <input type="number" id="enr-seq" class="form-control" min="1" step="1" value="${nextSeq['Not Priority']}" required />
+              </div>
+              <div class="form-helper" id="enr-seq-help">Next free: NP-${nextSeq['Not Priority']}. Priority and Not Priority are counted separately.</div>
             </div>
           </div>
           <div class="form-grid-2">
@@ -3643,7 +3654,7 @@ class FarmOpsApp {
           </div>
           <div id="enr-size-hint" class="form-helper" style="margin-top:-6px;">Area and palm count are for one block. For several blocks, set them later with ✏️.</div>
           <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-            <button type="reset" class="btn btn-outline">Clear</button>
+            <button type="reset" class="btn btn-outline" onclick="setTimeout(() => app.updateEnrollmentSequence(), 0)">Clear</button>
             <button type="submit" id="enr-submit" class="btn btn-primary">✓ Enroll</button>
           </div>
         </form>
@@ -3703,8 +3714,8 @@ class FarmOpsApp {
                   return `${groupHeader}
                 <tr class="enr-row" data-group="${group}" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
                     data-priority="${group === 'P' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}"
-                    data-search="${e([lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
-                  <td style="white-space:nowrap;"><strong>${seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '—'}</strong></td>
+                    data-search="${e([seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '', lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
+                  <td style="white-space:nowrap;"><strong>${seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '<span style="color:#92400e;">not set</span>'}</strong></td>
                   <td style="white-space:nowrap;"><strong>${e(lo.landOwnerNo || '—')}</strong></td>
                   <td><strong>${e(b.landOwnerName)}</strong></td>
                   <td>${this.categoryBadge(lo.category)}</td>
@@ -3731,6 +3742,7 @@ class FarmOpsApp {
     this._enrollParcels = parcels;
     this._enrollLandowners = landowners;
     this._enrollNextNo = claifPrefix;
+    this._enrollNextSeq = nextSeq;
     this.filterEnrollmentTable();
   }
 
@@ -3748,10 +3760,23 @@ class FarmOpsApp {
     if (existing) {
       if (existing.landOwnerNo) noEl.value = existing.landOwnerNo;
       catEl.value = existing.category === 'Priority' ? 'Priority' : 'Not Priority';
+      this.updateEnrollmentSequence(existing);
     } else if (this._enrollFilledFromExisting) {
       noEl.value = this._enrollNextNo;
+      this.updateEnrollmentSequence();
     }
     this._enrollFilledFromExisting = !!existing;
+  }
+
+  /** Shows P- / NP- and fills the next free Sequence No. for the chosen category (or the land owner's own number). */
+  updateEnrollmentSequence(existing = null) {
+    const cat = document.getElementById('enr-category').value;
+    const prefix = cat === 'Priority' ? 'P-' : 'NP-';
+    const next = (this._enrollNextSeq || {})[cat] || 1;
+    const seqEl = document.getElementById('enr-seq');
+    document.getElementById('enr-seq-prefix').textContent = prefix;
+    document.getElementById('enr-seq-help').textContent = `Next free: ${prefix}${next}. Priority and Not Priority are counted separately.`;
+    seqEl.value = existing && existing.sequenceNo && existing.category === cat ? existing.sequenceNo : next;
   }
 
   updateEnrollmentSizeFields() {
@@ -3791,6 +3816,7 @@ class FarmOpsApp {
       landOwnerNo: document.getElementById('enr-no').value,
       landOwnerName: document.getElementById('enr-landowner').value.trim(),
       category: document.getElementById('enr-category').value,
+      sequenceNo: document.getElementById('enr-seq').value,
       parcelNumber: document.getElementById('enr-parcel').value.trim(),
       farmBlocks: document.getElementById('enr-block').value.split(',').map((s) => s.trim()).filter(Boolean),
       areaHa: document.getElementById('enr-area').value,
@@ -3819,6 +3845,14 @@ class FarmOpsApp {
       .map((p) => p.parcelNumber);
     const e = (v) => this.esc(v);
 
+    // Next free sequence per category, used when the category is changed in this window
+    const allOwners = await db.getAll('landowners');
+    this._editSeq = { original: lo, next: { 'Priority': 1, 'Not Priority': 1 } };
+    allOwners.filter((l) => l.status !== 'Deactivated' && l.landOwnerId !== lo.landOwnerId).forEach((l) => {
+      const cat = l.category === 'Priority' ? 'Priority' : 'Not Priority';
+      this._editSeq.next[cat] = Math.max(this._editSeq.next[cat], (parseInt(l.sequenceNo, 10) || 0) + 1);
+    });
+
     document.getElementById('form-modal-title').textContent = `Edit: ${block.landOwnerName} › ${block.parcelNumber} › ${block.farmBlockName}`;
     document.getElementById('form-modal-body').innerHTML = `
       <div style="font-weight:700;color:var(--palm-dark);margin-bottom:8px;">🏡 Land Owner (applies to all of ${e(block.landOwnerName)}'s blocks)</div>
@@ -3830,11 +3864,19 @@ class FarmOpsApp {
         </div>
         <div class="form-group">
           <label class="form-label">Category</label>
-          <select id="ed-category" class="form-control">
+          <select id="ed-category" class="form-control" onchange="app.updateEditSequence()">
             <option value="Not Priority" ${lo.category !== 'Priority' ? 'selected' : ''}>Not Priority</option>
             <option value="Priority" ${lo.category === 'Priority' ? 'selected' : ''}>Priority</option>
           </select>
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label required">Sequence No.</label>
+        <div style="display:flex;align-items:center;gap:8px;max-width:260px;">
+          <span id="ed-seq-prefix" style="font-weight:700;min-width:34px;">${lo.category === 'Priority' ? 'P-' : 'NP-'}</span>
+          <input type="number" id="ed-seq" class="form-control" min="1" step="1" value="${e(lo.sequenceNo || '')}" />
+        </div>
+        <div class="form-helper" id="ed-seq-help">Must be free inside its category (Priority or Not Priority).</div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -3890,6 +3932,7 @@ class FarmOpsApp {
             landOwnerId: lo.landOwnerId,
             landOwnerNo: document.getElementById('ed-no').value,
             category: document.getElementById('ed-category').value,
+            sequenceNo: document.getElementById('ed-seq').value,
             landOwnerName: newName,
             phone: document.getElementById('ed-phone').value
           });
@@ -3914,6 +3957,20 @@ class FarmOpsApp {
       }
     };
     this.openModal('form-modal');
+  }
+
+  /** Edit window: when the category changes, show P- / NP- and suggest the next free number. */
+  updateEditSequence() {
+    const st = this._editSeq;
+    if (!st) return;
+    const cat = document.getElementById('ed-category').value;
+    const prefix = cat === 'Priority' ? 'P-' : 'NP-';
+    document.getElementById('ed-seq-prefix').textContent = prefix;
+    const sameAsBefore = (st.original.category === 'Priority' ? 'Priority' : 'Not Priority') === cat;
+    document.getElementById('ed-seq').value = sameAsBefore && st.original.sequenceNo ? st.original.sequenceNo : st.next[cat];
+    document.getElementById('ed-seq-help').textContent = sameAsBefore
+      ? 'Must be free inside its category (Priority or Not Priority).'
+      : `Moved to ${cat}: next free is ${prefix}${st.next[cat]}. You can type another free number.`;
   }
 
   async setBlockStatus(blockId, status) {
