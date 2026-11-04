@@ -3537,7 +3537,7 @@ class FarmOpsApp {
     const loOf = (b) => loByName.get(String(b.landOwnerName).toLowerCase()) || {};
     const claifPrefix = 'CLAIF-';
 
-        // Enrollment sequence: separate numbering for Priority (1, 2, 3...) and Not Priority (1, 2, 3...),
+    // Enrollment sequence: separate numbering for Priority (1, 2, 3...) and Not Priority (1, 2, 3...),
     // in the order the land owners were enrolled.
     const isPriority = (lo) => lo && lo.category === 'Priority';
     const seqOf = new Map();
@@ -3561,9 +3561,10 @@ class FarmOpsApp {
 
     const activeCount = blocks.filter((b) => b.status !== 'Deactivated').length;
     const unassigned = blocks.filter((b) => b.status !== 'Deactivated' && (!b.supervisorNames || !b.supervisorNames.length)).length;
-        const priorityCount = pSeq;
+    const priorityCount = pSeq;
     const notPriorityCount = nSeq;
     let lastGroup = '';
+
     container.innerHTML = `
       <div style="margin-bottom: 20px;">
         <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Land Owner Enrollment</h2>
@@ -3657,7 +3658,6 @@ class FarmOpsApp {
           <option value="NOSUP">Active without supervisor</option>
           <option value="PRIORITY">Priority only</option>
           <option value="NOTPRIORITY">Not Priority only</option>
-          <option value="NOTPRIORITY">Not Priority only</option>
           <option value="NOSIZE">Missing area / palms</option>
         </select>
       </div>
@@ -3682,7 +3682,7 @@ class FarmOpsApp {
             </thead>
             <tbody id="enr-table-body">
               ${blocks.length === 0 ? `
-                              <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px;">
+                <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px;">
                   No land owners enrolled yet. Use the form above to enroll the first one.</td></tr>` : blocks.map((b) => {
                   const lo = loOf(b);
                   const sup = (b.supervisorNames && b.supervisorNames.length) ? b.supervisorNames.join(', ') : '';
@@ -3706,6 +3706,7 @@ class FarmOpsApp {
                     data-search="${e([lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
                   <td style="white-space:nowrap;"><strong>${seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '—'}</strong></td>
                   <td style="white-space:nowrap;"><strong>${e(lo.landOwnerNo || '—')}</strong></td>
+                  <td><strong>${e(b.landOwnerName)}</strong></td>
                   <td>${this.categoryBadge(lo.category)}</td>
                   <td>${e(b.parcelNumber)}</td>
                   <td>${e(b.farmBlockName)} <span style="font-size:11px;color:var(--text-light);">${e(b.blockId)}</span></td>
@@ -3773,8 +3774,14 @@ class FarmOpsApp {
       else if (st === 'Deactivated') matchStatus = !active;
       else if (st === 'NOSUP') matchStatus = active && row.dataset.nosup === '1';
       else if (st === 'PRIORITY') matchStatus = active && row.dataset.priority === '1';
+      else if (st === 'NOTPRIORITY') matchStatus = active && row.dataset.priority === '0';
       else if (st === 'NOSIZE') matchStatus = active && row.dataset.nosize === '1';
       row.style.display = matchText && matchStatus ? '' : 'none';
+    });
+    // Hide a Priority / Not Priority heading when none of its rows are shown
+    document.querySelectorAll('.enr-group').forEach((head) => {
+      const anyVisible = [...document.querySelectorAll(`.enr-row[data-group="${head.dataset.group}"]`)].some((r) => r.style.display !== 'none');
+      head.style.display = anyVisible ? '' : 'none';
     });
   }
 
