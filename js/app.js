@@ -3576,7 +3576,7 @@ class FarmOpsApp {
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-icon green">🏡</div><div class="stat-info">
           <div class="stat-label">Land Owners</div><div class="stat-value">${landowners.filter((l) => l.status !== 'Deactivated').length}</div>
-          <div class="stat-sub">${priorityCount} Priority</div></div></div>
+          <div class="stat-sub">${priorityCount} Priority &bull; ${notPriorityCount} Not Priority</div></div></div>
         <div class="stat-card"><div class="stat-icon blue">🗂️</div><div class="stat-info">
           <div class="stat-label">Parcels</div><div class="stat-value">${parcels.filter((p) => p.status !== 'Deactivated').length}</div></div></div>
         <div class="stat-card"><div class="stat-icon green">🌴</div><div class="stat-info">
@@ -3656,6 +3656,8 @@ class FarmOpsApp {
           <option value="Deactivated">Deactivated only</option>
           <option value="NOSUP">Active without supervisor</option>
           <option value="PRIORITY">Priority only</option>
+          <option value="NOTPRIORITY">Not Priority only</option>
+          <option value="NOTPRIORITY">Not Priority only</option>
           <option value="NOSIZE">Missing area / palms</option>
         </select>
       </div>
@@ -3665,6 +3667,7 @@ class FarmOpsApp {
           <table class="table">
             <thead>
               <tr>
+                <th title="Enrollment sequence, counted separately for Priority and Not Priority">Seq.</th>
                 <th>CLAIF No.</th>
                 <th>Land Owner</th>
                 <th>Category</th>
@@ -3679,18 +3682,30 @@ class FarmOpsApp {
             </thead>
             <tbody id="enr-table-body">
               ${blocks.length === 0 ? `
-                <tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:24px;">
+                              <tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:24px;">
                   No land owners enrolled yet. Use the form above to enroll the first one.</td></tr>` : blocks.map((b) => {
                   const lo = loOf(b);
                   const sup = (b.supervisorNames && b.supervisorNames.length) ? b.supervisorNames.join(', ') : '';
                   const active = b.status !== 'Deactivated';
                   const noSize = !b.areaHa || !b.palmCount;
-                  return `
-                <tr class="enr-row" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
-                    data-priority="${lo.category === 'Priority' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}"
+                  const group = isPriority(lo) ? 'P' : 'N';
+                  const seq = seqOf.get(String(b.landOwnerName).toLowerCase());
+                  let groupHeader = '';
+                  if (group !== lastGroup) {
+                    lastGroup = group;
+                    groupHeader = `
+                <tr class="enr-group" data-group="${group}">
+                  <td colspan="11" style="background:${group === 'P' ? '#fef2f2' : '#f0fdf4'};font-weight:800;font-size:12.5px;letter-spacing:0.5px;color:${group === 'P' ? '#991b1b' : '#166534'};">
+                    ${group === 'P' ? '⭐ PRIORITY' : 'NOT PRIORITY'} &bull; ${group === 'P' ? priorityCount : notPriorityCount} land owner(s)
+                  </td>
+                </tr>`;
+                  }
+                  return `${groupHeader}
+                <tr class="enr-row" data-group="${group}" data-status="${active ? 'Active' : 'Deactivated'}" data-nosup="${sup ? '0' : '1'}"
+                    data-priority="${group === 'P' ? '1' : '0'}" data-nosize="${noSize ? '1' : '0'}"
                     data-search="${e([lo.landOwnerNo, b.landOwnerName, b.parcelNumber, b.farmBlockName, sup].join(' ').toLowerCase())}">
-                  <td><strong>${e(lo.landOwnerNo || '—')}</strong></td>
-                  <td><strong>${e(b.landOwnerName)}</strong></td>
+                  <td style="white-space:nowrap;"><strong>${seq ? `${group === 'P' ? 'P' : 'NP'}-${seq}` : '—'}</strong></td>
+                  <td style="white-space:nowrap;"><strong>${e(lo.landOwnerNo || '—')}</strong></td>
                   <td>${this.categoryBadge(lo.category)}</td>
                   <td>${e(b.parcelNumber)}</td>
                   <td>${e(b.farmBlockName)} <span style="font-size:11px;color:var(--text-light);">${e(b.blockId)}</span></td>
