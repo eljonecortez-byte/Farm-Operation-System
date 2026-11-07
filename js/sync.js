@@ -191,11 +191,20 @@ class SyncService {
       createdTimestamp: createdTimestamp
     };
 
-    // 1. Put in IndexedDB reports store
-    await db.put('reports', fullRecord);
+    // 0. Data Validator: check against the registered target with the data on this device (works offline)
+    let dv = null;
+    if (typeof app !== 'undefined' && app && typeof app.dvValidateLocal === 'function') {
+      try { dv = await app.dvValidateLocal(fullRecord); } catch (err) { console.warn('[Sync] Data Validator check failed:', err); }
+    }
 
-    // 2. Put in pendingQueue store
+    // 1. Only valid reports count as accomplishments (reports store); the others are kept in the Data Validator
+    if (!dv || !dv.applies || dv.status === 'VALID') await db.put('reports', fullRecord);
+
+    // 2. Every report is queued for the server (it checks again with the latest data) — nothing is discarded
     await db.put('pendingQueue', fullRecord);
+    if (dv && dv.applies) {
+      try { await app.dvSaveLocal(fullRecord, dv); } catch (err) { console.warn('[Sync] Data Validator save failed:', err); }
+    }
 
     console.log('[Sync] Report queued locally in IndexedDB:', reportId);
     await this.updateSyncStatus();
@@ -207,7 +216,7 @@ class SyncService {
       });
     }
 
-    return fullRecord;
+    return { ...fullRecord, dv };
   }
 
   /**
@@ -215,6 +224,13 @@ class SyncService {
    * Reports created by another account on this device stay queued until that person signs in.
    */
   async syncPendingRecords() {
+    // one sync at a time: a second caller (e.g. the 'online' event and a button) waits for the same run
+    if (this._syncRun) return this._syncRun;
+    this._syncRun = this._syncPendingRecordsOnce();
+    try { return await this._syncRun; } finally { this._syncRun = null; }
+  }
+
+  async _syncPendingRecordsOnce() {
     if (this.isSyncing) return { success: false, message: 'Sync already in progress.' };
 
     if (!(await this.getApiUrl())) {
@@ -250,6 +266,7 @@ class SyncService {
     try {
       let totalSynced = 0;
       let totalRejected = 0;
+      let totalFlagged = 0;
 
       // Upload in chunks of 100 to stay within Apps Script limits
       for (let i = 0; i < pending.length; i += 100) {
@@ -261,6 +278,12 @@ class SyncService {
         });
 
         const serverTimestamp = result.serverTimestamp || new Date().toISOString();
+
+        // Data Validator results: valid reports become accomplishments, the others are removed from them
+        if (Array.isArray(result.validation) && result.validation.length && typeof app !== 'undefined' && app.dvApplyServerResults) {
+          totalFlagged += result.validation.filter((v) => v.status !== 'VALID' && v.status !== 'APPROVED').length;
+          try { await app.dvApplyServerResults(result.validation, chunk); } catch (err) { console.warn('[Sync] Data Validator results:', err); }
+        }
 
         for (const reportId of result.syncedIds || []) {
           const localRecord = await db.get('reports', reportId);
@@ -285,6 +308,9 @@ class SyncService {
           await db.delete('pendingQueue', rej.reportId);
           totalRejected++;
         }
+        if ((result.rejected || []).length && typeof app !== 'undefined' && app.dvMarkRejected) {
+          try { await app.dvMarkRejected(result.rejected); } catch (err) { console.warn('[Sync] Data Validator:', err); }
+        }
       }
 
       this.lastSyncTime = new Date();
@@ -293,7 +319,8 @@ class SyncService {
 
       let message = `Synchronized ${totalSynced} report(s) to Google Sheets.`;
       if (totalRejected) message += ` ${totalRejected} rejected by the server (see Sync Center).`;
-      return { success: true, count: totalSynced, rejected: totalRejected, message };
+      if (totalFlagged) message += ` ${totalFlagged} not counted — Invalid / For Review (see Data Validator).`;
+      return { success: true, count: totalSynced, rejected: totalRejected, flagged: totalFlagged, message };
     } catch (err) {
       console.error('[Sync] Sync failed:', err);
       this.setStatus('SYNC ERROR');
@@ -324,6 +351,8 @@ class SyncService {
     }
 
     await db.setSetting('customActivities', Array.isArray(result.customActivities) ? result.customActivities : []);
+    if (Array.isArray(result.validationRules)) await db.setSetting('validationRules', result.validationRules);
+    if (result.serverToday) await db.setSetting('serverToday', result.serverToday);
 
     const settings = result.settings || {};
     for (const key of ['workingDaysPerWeek', 'restDays', 'dailyWorkingHours', 'holidays', 'activeMapVersion']) {
