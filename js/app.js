@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.1.0';
+const FRONTEND_VERSION = '4.2.0';
 
 class FarmOpsApp {
   constructor() {
@@ -100,6 +100,7 @@ class FarmOpsApp {
     else if (t.includes('compost')) v = a === 'Regular Activity' ? r.compostPalms : null;
     else if (t.includes('pruning')) v = a === 'Regular Activity' ? r.pruningPalms : null;
     else if (t.includes('soil drench')) v = a === 'Regular Activity' ? r.soilDrenchingPalms : null;
+    else if (t.includes('foliar')) v = a === 'Regular Activity' ? r.foliarPalms : null;
     else if (t.includes('seednut')) v = a === 'Seednut Collection' ? r.nutCountCollected : null;
     else if (t.includes('pest') || t.includes('disease')) v = a === 'Pest and Disease Activity' ? r.totalPalmsAffected : null;
     else if (a === 'Other Farm Activity' && n(r.otherActivities) === t) v = r.quantity;
@@ -440,6 +441,10 @@ class FarmOpsApp {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span>Daily Monitoring</span>
       </div>
+      <div class="nav-link ${this.currentView === 'data-validator' ? 'active' : ''}" onclick="app.navigateTo('data-validator')">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        <span>Data Validator</span>
+      </div>
       <div class="nav-link ${this.currentView === 'job-orders' ? 'active' : ''}" onclick="app.navigateTo('job-orders')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         <span>Job Orders</span>
@@ -643,6 +648,11 @@ class FarmOpsApp {
       case 'job-orders':
         if (titleEl) titleEl.textContent = 'Job Orders';
         await this.renderJobOrdersView(container);
+        break;
+
+      case 'data-validator':
+        if (titleEl) titleEl.textContent = 'Data Validator';
+        await this.renderDataValidatorView(container);
         break;
 
       case 'weather':
@@ -2070,7 +2080,7 @@ class FarmOpsApp {
             <div class="form-grid-2">
               <div class="form-group">
                 <label class="form-label">Weeding Rolling / Slashing Cleared (Hectares)</label>
-                <input type="number" step="0.01" id="reg-weeding-ha" class="form-control" placeholder="0.00" />
+                <input type="number" step="0.001" min="0" id="reg-weeding-ha" class="form-control" placeholder="0.000" />
               </div>
               <div class="form-group">
                 <label class="form-label">Round Weeding Count of Palms</label>
@@ -2120,6 +2130,12 @@ class FarmOpsApp {
                 <input type="number" step="0.1" id="reg-drench-liters" class="form-control" placeholder="0" />
               </div>
             </div>
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label class="form-label">Foliar Application Count of Palms</label>
+                <input type="number" min="0" step="1" id="reg-foliar-palms" class="form-control" placeholder="0" />
+              </div>
+            </div>
             <div class="form-group">
               <label class="form-label">Foliar Request Code (QR Code / Text / Number)</label>
               <div style="display: flex; gap: 8px;">
@@ -2144,9 +2160,18 @@ class FarmOpsApp {
 
     await this.populateCascadingDropdowns('reg-landowner', 'reg-parcel', 'reg-block');
     await this.populateActivityDropdown('reg-cycle', 'Regular Activity', 'Cycle');
+    if (this.dvAttachHints) {
+      await this.dvAttachHints({
+        activityType: 'Regular Activity', land: 'reg-landowner', parcel: 'reg-parcel', block: 'reg-block', date: 'reg-date', cycle: 'reg-cycle',
+        fields: { weedingSlashingHa: 'reg-weeding-ha', roundWeedingPalms: 'reg-round-weeding-palms', compostPalms: 'reg-compost-palms',
+          pruningPalms: 'reg-pruning-palms', foliarPalms: 'reg-foliar-palms', soilDrenchingPalms: 'reg-drench-palms' }
+      });
+    }
   }
 
   async submitRegularActivity() {
+    // Quantities are kept exactly as typed (never rounded or cut); the Data Validator checks them
+    const qty = (id) => { const v = String(document.getElementById(id).value).trim(); return v === '' ? 0 : Number(v); };
     const reportData = {
       activityType: 'Regular Activity',
       userId: auth.getUserId(),
@@ -2157,14 +2182,15 @@ class FarmOpsApp {
       farmBlock: document.getElementById('reg-block').value,
       manpower: parseFloat(document.getElementById('reg-manpower').value) || 1,
       cycle: document.getElementById('reg-cycle').value,
-      weedingSlashingHa: parseFloat(document.getElementById('reg-weeding-ha').value) || 0,
-      roundWeedingPalms: parseInt(document.getElementById('reg-round-weeding-palms').value) || 0,
-      compostPalms: parseInt(document.getElementById('reg-compost-palms').value) || 0,
+      weedingSlashingHa: qty('reg-weeding-ha'),
+      roundWeedingPalms: qty('reg-round-weeding-palms'),
+      compostPalms: qty('reg-compost-palms'),
       quantitySacks: parseFloat(document.getElementById('reg-compost-sacks').value) || 0,
       quantityKilo: parseFloat(document.getElementById('reg-compost-kilo').value) || 0,
       bofRequestNo: document.getElementById('reg-bof-request').value.trim(),
-      pruningPalms: parseInt(document.getElementById('reg-pruning-palms').value) || 0,
-      soilDrenchingPalms: parseInt(document.getElementById('reg-drench-palms').value) || 0,
+      pruningPalms: qty('reg-pruning-palms'),
+      soilDrenchingPalms: qty('reg-drench-palms'),
+      foliarPalms: qty('reg-foliar-palms'),
       quantityLiters: parseFloat(document.getElementById('reg-drench-liters').value) || 0,
       foliarRequestCode: document.getElementById('reg-foliar-code').value.trim(),
       remarks: document.getElementById('reg-remarks').value.trim(),
@@ -2172,9 +2198,10 @@ class FarmOpsApp {
       gpsLongitude: this.gpsCoordinates ? this.gpsCoordinates.longitude : ''
     };
 
+    reportData.recordId = this.dvResolveRecordId ? this.dvResolveRecordId(document.getElementById('reg-landowner').value, reportData.parcelNumber, reportData.farmBlock) : '';
     const saved = await syncService.submitReportLocally(reportData);
-    this.showToast('Regular Activity Report recorded successfully!', 'success');
-    this.navigateTo('daily-monitoring');
+    if (this.dvAfterSubmit) this.dvAfterSubmit(saved, 'Regular Activity Report recorded successfully!', 'daily-monitoring');
+    else { this.showToast('Regular Activity Report recorded successfully!', 'success'); this.navigateTo('daily-monitoring'); }
   }
 
   /* ==========================================================================
