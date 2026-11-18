@@ -22,7 +22,7 @@
  *  MapRegistry, DeviceRegistry, SyncLogs, AuditLogs, SystemSettings
  */
 
-var APP_VERSION = '4.4.0';
+var APP_VERSION = '4.5.0';
 var MAP_CELL_LIMIT = 45000;       // characters per sheet cell for map data
 var MAP_MAX_CHARS = 3000000;      // ~3 MB per map (keeps phones fast)
 var TOKEN_TTL_DAYS = 30;          // Field devices can stay offline for long periods
@@ -90,7 +90,7 @@ var HEADERS = {
   USERS: [
     'User ID', 'Employee ID', 'Full Name', 'Username', 'Password Hash', 'Role',
     'Assigned Supervisor', 'Assigned Farm and Blocks', 'Assigned Activities',
-    'Account Status', 'Date Created', 'Last Login', 'Must Change Password', 'Token Version'
+    'Account Status', 'Date Created', 'Last Login', 'Must Change Password', 'Token Version', 'Profile Photo'
   ],
   PERMISSIONS: [
     'Permission ID', 'User ID', 'Can Manage Users', 'Can Manage Dropdowns',
@@ -327,7 +327,7 @@ var WRITE_ACTIONS = {
   CHANGE_PASSWORD: true, SAVE_MAP: true, DELETE_MAP: true, REGISTER_DEVICE: true,
   ENROLL_LANDOWNER: true, SET_BLOCK_STATUS: true, PING: true,
   SAVE_ACTIVITY_TYPE: true, SET_ACTIVITY_TYPE_STATUS: true,
-  UPDATE_LANDOWNER: true, UPDATE_BLOCK: true, DELETE_BLOCK: true, JO_SYNC: true, DV_REVIEW: true, UPLOAD_REPORT_PHOTO: true
+  UPDATE_LANDOWNER: true, UPDATE_BLOCK: true, DELETE_BLOCK: true, JO_SYNC: true, DV_REVIEW: true, UPLOAD_REPORT_PHOTO: true, SET_PROFILE_PHOTO: true
 };
 
 function doPost(e) {
@@ -410,6 +410,7 @@ function doPost(e) {
       case 'JO_SYNC':              return handleJoSync(ctx, payload);
       case 'JO_ATTACHMENT':        return handleJoAttachment(ctx, payload);
       case 'UPLOAD_REPORT_PHOTO':  return handleUploadReportPhoto(ctx, payload);
+      case 'SET_PROFILE_PHOTO':    return handleSetProfilePhoto(ctx, payload);
       case 'REPORT_PHOTO':         return handleReportPhoto(ctx, payload);
       case 'REPORT_PHOTO_THUMBS':  return handleReportPhotoThumbs(ctx, payload);
       case 'GET_WEATHER':          return handleGetWeather(ctx, payload);
@@ -1077,6 +1078,7 @@ function publicUser(u, blocks, supMap) {
     assignedSupervisor: supervisor,
     assignedFarmAndBlocks: ids === 'ALL' ? ['ALL'] : ids,   // Block IDs covered (used for scope on the device)
     assignedFarmBlockCodes: (function () { var c = resolveAssignedCodes(u['Assigned Farm and Blocks'], blocks); return c === 'ALL' ? ['ALL'] : c; })(),
+    photo: /^data:image\/jpeg;base64,/.test(String(u['Profile Photo'] || '')) ? String(u['Profile Photo']) : '',   // small square (≈192 px)
     assignedFarms: assignedFarmKeys(u),                        // Farm Officer: whole farms (FARM:F04)
     assignedActivities: parseList(u['Assigned Activities']),
     accountStatus: String(u['Account Status'] || ''),
@@ -4258,4 +4260,23 @@ function handleReportPhotoThumbs(ctx, payload) {
     if (row && rpCanSee(ctx, row, codes)) out[id] = { thumb: String(row['Thumb'] || ''), source: String(row['Source'] || '') };
   });
   return respondJSON({ success: true, thumbs: out });
+}
+
+
+/* ==========================================================================
+   PROFILE PHOTO (v4.5) — small square JPEG (≈192 px, < 40 KB) kept in the Users sheet.
+   Each user changes his own; an Administrator can set or remove anyone's.
+   ========================================================================== */
+function handleSetProfilePhoto(ctx, payload) {
+  var userId = String(payload.userId || ctx.userId);
+  if (userId !== ctx.userId && !ctx.isAdmin) return respondJSON({ success: false, code: 'FORBIDDEN', error: 'You can only change your own photo.' });
+  var target = findUser(ctx.users, userId);
+  if (!target) return respondJSON({ success: false, error: 'User not found.' });
+  var photo = String(payload.photo || '');
+  if (photo && (!/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(photo) || photo.length > 40000)) {
+    return respondJSON({ success: false, error: 'The photo is not valid or too big. Please choose it again.' });
+  }
+  updateObjectById(ctx.ss.getSheetByName(SHEET_NAMES.USERS), 'User ID', userId, { 'Profile Photo': photo });
+  logAudit(ctx.userId, ctx.role, 'SET_PROFILE_PHOTO', userId, 'Users', photo ? 'Photo updated' : 'Photo removed');
+  return respondJSON({ success: true, userId: userId, photo: photo, message: photo ? 'Profile photo saved.' : 'Profile photo removed.' });
 }
