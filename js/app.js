@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.3.0';
+const FRONTEND_VERSION = '4.4.0';
 
 class FarmOpsApp {
   constructor() {
@@ -1047,6 +1047,7 @@ class FarmOpsApp {
           <table class="table">
             <thead>
               <tr>
+                <th>Photo</th>
                 <th>Date</th>
                 <th>Activity Type</th>
                 <th>Landowner &amp; Parcel</th>
@@ -1058,9 +1059,10 @@ class FarmOpsApp {
             </thead>
             <tbody>
               ${reports.length === 0 ? `
-                <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">No activities recorded yet. Click "+ New Activity Report" above to begin.</td></tr>
+                <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">No activities recorded yet. Click "+ New Activity Report" above to begin.</td></tr>
               ` : reports.slice(0, 5).map((r) => `
                 <tr>
+                  <td>${this.photoCell ? this.photoCell(r) : ''}</td>
                   <td><strong>${r.date || 'Today'}</strong></td>
                   <td>${this.esc(r.activityType)}</td>
                   <td>${this.esc(r.landOwnersName || '—')}${r.landOwnerNo ? ` <span style="font-size:11px;color:var(--text-muted);">${this.esc(r.landOwnerNo)}</span>` : ''} &bull; ${this.esc(r.parcelNumber || '—')}</td>
@@ -5130,6 +5132,7 @@ class FarmOpsApp {
           <table class="table" id="reports-export-table">
             <thead>
               <tr>
+                <th>Photo</th>
                 <th>Report ID</th>
                 <th>Date</th>
                 <th>Activity</th>
@@ -5144,6 +5147,7 @@ class FarmOpsApp {
             <tbody>
               ${reports.map((r) => `
                 <tr class="rpt-row" data-activity="${this.esc(r.activityType)}" data-date="${this.esc(r.date || '')}">
+                  <td>${this.photoCell ? this.photoCell(r) : ''}</td>
                   <td><code>${this.esc(r.reportId)}</code></td>
                   <td>${this.esc(r.date || '—')}</td>
                   <td><strong>${this.esc(r.activityType)}</strong></td>
