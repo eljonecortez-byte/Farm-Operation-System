@@ -225,7 +225,8 @@ class AuthService {
       assignedFarmAndBlocks: serverMe.assignedFarmAndBlocks,
       assignedActivities: serverMe.assignedActivities,
       accountStatus: serverMe.accountStatus,
-      mustChangePassword: serverMe.mustChangePassword
+      mustChangePassword: serverMe.mustChangePassword,
+      photo: serverMe.photo !== undefined ? serverMe.photo : this.currentUser.photo
     };
     await db.put('users', user);
     await db.setSetting('currentUser', user);
