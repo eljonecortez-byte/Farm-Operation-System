@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.2.1';
+const FRONTEND_VERSION = '4.3.0';
 
 class FarmOpsApp {
   constructor() {
@@ -449,7 +449,7 @@ class FarmOpsApp {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         <span>Job Orders</span>
       </div>
-      ${role === 'Administrator' || role === 'Supervisor' ? `
+      ${['Administrator', 'Supervisor', 'Farm Officer'].includes(role) ? `
       <div class="nav-link ${this.currentView === 'weather' ? 'active' : ''}" onclick="app.navigateTo('weather')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"/><line x1="8" y1="19" x2="8" y2="21"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="16" y1="19" x2="16" y2="21"/><line x1="16" y1="13" x2="16" y2="15"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="12" y1="15" x2="12" y2="17"/></svg>
         <span>Weather</span>
@@ -473,7 +473,7 @@ class FarmOpsApp {
     `;
 
     // Admin & Supervisor Management Links
-    if (role === 'Administrator' || role === 'Supervisor') {
+    if (['Administrator', 'Supervisor', 'Farm Officer'].includes(role)) {
       linksHtml += `
         <div class="nav-section-title">KPI & Configuration</div>
         <div class="nav-link ${this.currentView === 'kpi-registration' ? 'active' : ''}" onclick="app.navigateTo('kpi-registration')">
@@ -1091,6 +1091,7 @@ class FarmOpsApp {
     try { await this.renderSequenceDashboardCard(container); } catch (err) { console.warn('[Dashboard] sequence summary', err); }
     try { await this.renderJobOrderDashboardCard(container); } catch (err) { console.warn('[Dashboard] job orders', err); }
     try { await this.renderWeatherDashboardCard(container); } catch (err) { console.warn('[Dashboard] weather', err); }
+    try { if (this.renderProgressDashboardCard) await this.renderProgressDashboardCard(container); } catch (err) { console.warn('[Dashboard] farm & block progress', err); }
   }
 
   /* ==========================================================================
@@ -4576,10 +4577,13 @@ class FarmOpsApp {
     const codeLabel = (c) => (catalog.codes.get(c) ? catalog.codes.get(c).full : String(c).replace(/^N:/, ''));
     const e = (v) => this.esc(v);
 
-    const roleOrder = { Administrator: 0, Supervisor: 1, 'Field Personnel': 2 };
+    const roleOrder = { Administrator: 0, 'Farm Officer': 1, Supervisor: 2, 'Field Personnel': 3 };
     users.sort((a, b) => (roleOrder[a.role] - roleOrder[b.role]) || String(a.fullName).localeCompare(String(b.fullName)));
 
     const blocksLabel = (u) => {
+      if (u.role === 'Farm Officer' && Array.isArray(u.assignedFarms) && u.assignedFarms.length) {
+        return u.assignedFarms.map((k) => `<div style="font-size:12px;">🌴 ${e(this.farmLabelOfKey(k, catalog))} <span style="color:var(--text-muted);">(whole farm)</span></div>`).join('');
+      }
       const codes = this.userFarmBlockCodes(u, blocks);
       if (codes.includes('ALL')) return '<em>All Farm &amp; Blocks</em>';
       if (!codes.length) return '<span class="badge badge-behind">None</span>';
@@ -4613,6 +4617,7 @@ class FarmOpsApp {
           <option value="Administrator">Administrator</option>
           <option value="Supervisor">Supervisor</option>
           <option value="Field Personnel">Field Personnel</option>
+          <option value="Farm Officer">Farm Officer</option>
         </select>
       </div>
 
@@ -4638,7 +4643,7 @@ class FarmOpsApp {
                   <td><code>${e(u.employeeId)}</code></td>
                   <td><strong>${e(u.fullName)}</strong></td>
                   <td>${e(u.username)}</td>
-                  <td><span class="badge ${u.role === 'Administrator' ? 'badge-completed' : (u.role === 'Supervisor' ? 'badge-ahead' : 'badge-ontrack')}">${e(u.role)}</span></td>
+                  <td><span class="badge ${u.role === 'Administrator' ? 'badge-completed' : (u.role === 'Supervisor' || u.role === 'Farm Officer' ? 'badge-ahead' : 'badge-ontrack')}">${e(u.role)}</span></td>
                   <td>${blocksLabel(u)}</td>
                   <td>${u.role === 'Field Personnel' ? e(u.assignedSupervisor || 'None') : '—'}</td>
                   <td><span class="badge ${u.accountStatus === 'Active' ? 'badge-completed' : 'badge-behind'}">${e(u.accountStatus)}</span></td>
@@ -4727,7 +4732,7 @@ class FarmOpsApp {
       <div class="form-group">
         <label class="form-label required">Role</label>
         <select id="usr-role" class="form-control" onchange="app.renderUserBlockPicker()">
-          ${['Field Personnel', 'Supervisor', 'Administrator'].map((r) => `<option value="${r}" ${user && user.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+          ${['Field Personnel', 'Supervisor', 'Farm Officer', 'Administrator'].map((r) => `<option value="${r}" ${user && user.role === r ? 'selected' : ''}>${r}</option>`).join('')}
         </select>
       </div>
 
@@ -4780,7 +4785,9 @@ class FarmOpsApp {
       catalog,
       open: new Set(),
       // only Farm & Block codes; duplicates are impossible in a Set
-      selected: new Set(startCodes.includes('ALL') ? [...catalog.codes.keys()] : startCodes)
+      selected: new Set(startCodes.includes('ALL') ? [...catalog.codes.keys()] : startCodes),
+      // Farm Officer: whole farms (FARM:F04 ...)
+      farmsSel: new Set(user && Array.isArray(user.assignedFarms) ? user.assignedFarms : [])
     };
     // open the farms that already have a selection
     catalog.farms.forEach((f) => { if (f.blocks.some((b) => this._userModal.selected.has(b.code))) this._userModal.open.add(f.farmCode); });
@@ -4828,6 +4835,8 @@ class FarmOpsApp {
 
     const supByCode = this.getSupervisorByCode(m.user ? m.user.userId : null);
     m.taken = new Set(role === 'Supervisor' ? [...supByCode.keys()] : []);
+    if (role === 'Farm Officer') { this.renderFarmOfficerPicker(supByCode); return; }
+    wrap.querySelector('.form-label.required').innerHTML = 'Assigned Farm &amp; Blocks';
 
     picker.innerHTML = m.catalog.farms.map((f) => `
       <div class="fb-farm ${m.open.has(f.farmCode) ? 'open' : ''}" data-farm="${e(f.farmCode)}"
@@ -4862,6 +4871,63 @@ class FarmOpsApp {
     this.refreshUserFarmBlockState();
   }
 
+  /** Farm Officer: choose whole farms (every block of the farm, now and later). */
+  renderFarmOfficerPicker(supByCode) {
+    const m = this._userModal;
+    const e = (v) => this.esc(v);
+    const wrap = document.getElementById('usr-blocks-wrap');
+    wrap.querySelector('.form-label.required').innerHTML = 'Assigned Farms (whole farm)';
+    document.getElementById('usr-block-picker').innerHTML = m.catalog.farms.map((f) => {
+      const k = 'FARM:' + f.farmCode;
+      return `
+      <div class="fb-farm ${m.open.has(f.farmCode) ? 'open' : ''}" data-farm="${e(f.farmCode)}"
+           data-search="${e([f.farm, ...f.blocks.map((b) => `${b.full} ${b.block}`)].join(' ').toLowerCase())}">
+        <div class="fb-farm-head" onclick="app.toggleUserFarmOpen(event, '${e(f.farmCode)}')">
+          <span class="fb-caret">▶</span>
+          <input type="checkbox" class="fo-farm-cb" value="${e(k)}" ${m.farmsSel.has(k) ? 'checked' : ''} onclick="event.stopPropagation()"
+                 onchange="app.onFarmOfficerToggle(this)" title="Farm Officer of ${e(f.farm)}" />
+          <span>🌴 ${e(f.farm)}</span>
+          <span class="fb-count">${f.blocks.length} block(s)</span>
+        </div>
+        <div class="fb-blocks">${f.blocks.map((b) => {
+          const sup = supByCode.get(b.code);
+          return `<div class="fb-block" data-search="${e(`${b.full} ${b.block} ${f.farm}`.toLowerCase())}"><span><strong>${e(b.block)}</strong>
+            <small>${sup ? `👤 Sup. ${e(sup.fullName)}` : '<em>no supervisor</em>'}</small></span></div>`;
+        }).join('')}</div>
+      </div>`;
+    }).join('') || '<div style="color:var(--text-muted);font-size:13px;">No active Farm &amp; Blocks. Enroll land owners first.</div>';
+    this.filterUserBlockPicker();
+    this.refreshFarmOfficerState();
+  }
+
+  onFarmOfficerToggle(cb) {
+    if (cb.checked) this._userModal.farmsSel.add(cb.value); else this._userModal.farmsSel.delete(cb.value);
+    this.refreshFarmOfficerState();
+  }
+
+  refreshFarmOfficerState() {
+    const m = this._userModal;
+    const e = (v) => this.esc(v);
+    document.querySelectorAll('.fo-farm-cb').forEach((cb) => { cb.checked = m.farmsSel.has(cb.value); });
+    const chips = document.getElementById('usr-fb-chips');
+    if (chips) {
+      const sel = [...m.farmsSel].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      chips.innerHTML = sel.length
+        ? sel.map((k) => `<span class="fb-chip">🌴 ${e(this.farmLabelOfKey(k, m.catalog))}<button type="button" title="Remove" onclick="app._userModal.farmsSel.delete('${e(k)}'); app.refreshFarmOfficerState()">✕</button></span>`).join('')
+        : '<span class="form-helper">No farm selected yet.</span>';
+    }
+    const hint = document.getElementById('usr-auto-supervisor');
+    if (hint) hint.innerHTML = `${m.farmsSel.size} farm(s) selected. The Farm Officer sees <strong>every block</strong> of these farms, including blocks enrolled later. Block supervisors stay as they are.`;
+  }
+
+  farmLabelOfKey(k, catalog) {
+    const code = String(k).replace(/^FARM:/, '');
+    const f = catalog && catalog.farms.find((x) => x.farmCode === code);
+    if (f) return f.farm;
+    const m = code.match(/^F(\d+)$/);
+    return m ? `Farm ${m[1]}` : code.replace(/^N:/, '');
+  }
+
   toggleUserFarmOpen(ev, farmCode) {
     if (ev.target.closest('input')) return;
     const m = this._userModal;
@@ -4889,12 +4955,18 @@ class FarmOpsApp {
 
   selectAllUserFarmBlocks() {
     const m = this._userModal;
+    if (document.getElementById('usr-role').value === 'Farm Officer') {
+      m.catalog.farms.forEach((f) => m.farmsSel.add('FARM:' + f.farmCode));
+      this.refreshFarmOfficerState();
+      return;
+    }
     m.catalog.codes.forEach((c, code) => { if (!m.taken.has(code)) m.selected.add(code); });
     this.syncUserFarmBlockCheckboxes();
     if (m.taken.size) this.showToast('Blocks that already have a supervisor were skipped.', 'info');
   }
 
   clearUserFarmBlocks() {
+    if (document.getElementById('usr-role').value === 'Farm Officer') { this._userModal.farmsSel.clear(); this.refreshFarmOfficerState(); return; }
     this._userModal.selected.clear();
     this.syncUserFarmBlockCheckboxes();
   }
@@ -4974,13 +5046,13 @@ class FarmOpsApp {
       fullName: document.getElementById('usr-fullname').value.trim(),
       username: document.getElementById('usr-username').value.trim().toLowerCase(),
       role,
-      assignedFarmAndBlocks: role === 'Administrator' ? ['ALL'] : [...m.selected],
+      assignedFarmAndBlocks: role === 'Administrator' ? ['ALL'] : (role === 'Farm Officer' ? [...m.farmsSel] : [...m.selected]),
       assignedActivities: role === 'Administrator' || acts.includes('ALL') ? ['ALL'] : acts,
       accountStatus: m.user ? document.getElementById('usr-status').value : 'Active'
     };
 
     if (!userData.fullName || !userData.username) { this.showToast('Full Name and Username are required.', 'warning'); return; }
-    if (role !== 'Administrator' && !userData.assignedFarmAndBlocks.length) { this.showToast('Select at least one Farm & Block.', 'warning'); return; }
+    if (role !== 'Administrator' && !userData.assignedFarmAndBlocks.length) { this.showToast(role === 'Farm Officer' ? 'Select at least one Farm.' : 'Select at least one Farm & Block.', 'warning'); return; }
     if (role !== 'Administrator' && !userData.assignedActivities.length) { this.showToast('Select at least one activity.', 'warning'); return; }
 
     if (!m.user) {
