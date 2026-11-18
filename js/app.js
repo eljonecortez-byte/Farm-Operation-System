@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.4.0';
+const FRONTEND_VERSION = '4.5.0';
 
 class FarmOpsApp {
   constructor() {
@@ -291,7 +291,10 @@ class FarmOpsApp {
 
     if (nameEl) nameEl.textContent = user.fullName || user.username;
     if (roleEl) roleEl.textContent = user.role;
-    if (avatarEl) avatarEl.textContent = (user.fullName || user.username).charAt(0).toUpperCase();
+    if (avatarEl) {
+      const src = this.avatarSrc ? this.avatarSrc(user) : '';
+      avatarEl.innerHTML = src ? `<img src="${src}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />` : this.esc((user.fullName || user.username).charAt(0).toUpperCase());
+    }
   }
 
   updateSyncBadgeUI(status) {
@@ -4643,7 +4646,7 @@ class FarmOpsApp {
                 <tr class="usr-row" data-role="${e(u.role)}"
                     data-search="${e([u.fullName, u.username, u.employeeId, this.userFarmBlockCodes(u, blocks).map(codeLabel).join(' ')].join(' ').toLowerCase())}">
                   <td><code>${e(u.employeeId)}</code></td>
-                  <td><strong>${e(u.fullName)}</strong></td>
+                  <td><div style="display:flex;align-items:center;gap:10px;">${this.avatarHtml ? this.avatarHtml(u, 34) : ''}<strong>${e(u.fullName)}</strong></div></td>
                   <td>${e(u.username)}</td>
                   <td><span class="badge ${u.role === 'Administrator' ? 'badge-completed' : (u.role === 'Supervisor' || u.role === 'Farm Officer' ? 'badge-ahead' : 'badge-ontrack')}">${e(u.role)}</span></td>
                   <td>${blocksLabel(u)}</td>
@@ -5572,10 +5575,14 @@ class FarmOpsApp {
         </div>
 
         <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
-          <div class="user-avatar" style="width: 54px; height: 54px; font-size: 20px;">${e((user.fullName || user.username).charAt(0).toUpperCase())}</div>
+          ${this.avatarHtml ? this.avatarHtml(user, 84) : `<div class="user-avatar" style="width: 54px; height: 54px; font-size: 20px;">${e((user.fullName || user.username).charAt(0).toUpperCase())}</div>`}
           <div>
             <h3 style="font-size: 18px; font-weight: 700; color: var(--text-main);">${e(user.fullName)}</h3>
             <div style="font-size: 13px; color: var(--text-muted);">@${e(user.username)} &bull; ${e(user.employeeId)}</div>
+            ${this.avatarOpenEditor ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:13px;" onclick="app.avatarOpenEditor('${e(user.userId)}')">📷 Change Photo</button>
+              ${this.avatarSrc(user) ? `<button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:13px;color:#b91c1c;" onclick="app.avatarRemove('${e(user.userId)}')">🗑️ Remove</button>` : ''}
+            </div>` : ''}
           </div>
         </div>
 
