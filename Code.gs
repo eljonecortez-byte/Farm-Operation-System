@@ -22,7 +22,7 @@
  *  MapRegistry, DeviceRegistry, SyncLogs, AuditLogs, SystemSettings
  */
 
-var APP_VERSION = '4.3.0';
+var APP_VERSION = '4.4.0';
 var MAP_CELL_LIMIT = 45000;       // characters per sheet cell for map data
 var MAP_MAX_CHARS = 3000000;      // ~3 MB per map (keeps phones fast)
 var TOKEN_TTL_DAYS = 30;          // Field devices can stay offline for long periods
@@ -73,7 +73,8 @@ var SHEET_NAMES = {
   JO_AUDIT: 'JO_AuditLog',
   NOTIFICATIONS: 'Notifications',
   VALIDATION_RULES: 'ValidationRules',
-  DATA_VALIDATOR: 'DataValidator'
+  DATA_VALIDATOR: 'DataValidator',
+  REPORT_PHOTOS: 'ReportPhotos'
 };
 
 var ACTIVITY_SHEETS = {
@@ -210,6 +211,10 @@ var HEADERS = {
     'Report ID', 'Unique UUID', 'Status', 'Activity Type', 'Report Date', 'Cycle', 'Period', 'User ID', 'Supervisor', 'Record ID',
     'Land Owner', 'CLAIF Number', 'Farm Block Code', 'Farm & Block', 'Parcel Number', 'Sequence', 'Checks JSON', 'Reason',
     'Report JSON', 'Original JSON', 'History JSON', 'First Submitted', 'Last Validated', 'Reviewed By', 'Review Note', 'Reviewed At'
+  ],
+  REPORT_PHOTOS: [
+    'Report ID', 'Unique UUID', 'Activity Type', 'Report Date', 'Farm Block Code', 'Farm & Block', 'Land Owner', 'Parcel Number',
+    'User ID', 'Uploaded By', 'Source', 'Photo Date', 'Taken At', 'GPS', 'File ID', 'Photo Link', 'Size KB', 'Thumb', 'Uploaded At'
   ]
 };
 
@@ -322,7 +327,7 @@ var WRITE_ACTIONS = {
   CHANGE_PASSWORD: true, SAVE_MAP: true, DELETE_MAP: true, REGISTER_DEVICE: true,
   ENROLL_LANDOWNER: true, SET_BLOCK_STATUS: true, PING: true,
   SAVE_ACTIVITY_TYPE: true, SET_ACTIVITY_TYPE_STATUS: true,
-  UPDATE_LANDOWNER: true, UPDATE_BLOCK: true, DELETE_BLOCK: true, JO_SYNC: true, DV_REVIEW: true
+  UPDATE_LANDOWNER: true, UPDATE_BLOCK: true, DELETE_BLOCK: true, JO_SYNC: true, DV_REVIEW: true, UPLOAD_REPORT_PHOTO: true
 };
 
 function doPost(e) {
@@ -404,6 +409,9 @@ function doPost(e) {
       case 'DELETE_BLOCK':         requireRole(ctx, [ROLES.ADMIN]); return handleDeleteBlock(ctx, payload);
       case 'JO_SYNC':              return handleJoSync(ctx, payload);
       case 'JO_ATTACHMENT':        return handleJoAttachment(ctx, payload);
+      case 'UPLOAD_REPORT_PHOTO':  return handleUploadReportPhoto(ctx, payload);
+      case 'REPORT_PHOTO':         return handleReportPhoto(ctx, payload);
+      case 'REPORT_PHOTO_THUMBS':  return handleReportPhotoThumbs(ctx, payload);
       case 'GET_WEATHER':          return handleGetWeather(ctx, payload);
       case 'GET_VALIDATOR':        return handleGetValidator(ctx, payload);
       case 'DV_REVIEW':            return handleDvReview(ctx, payload);
@@ -1506,7 +1514,13 @@ function handleGetReports(ctx, payload) {
   records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
   var limit = Math.min(parseInt(filters.limit, 10) || 5000, 5000);
 
-  return respondJSON({ success: true, count: records.length, records: records.slice(0, limit) });
+  records = records.slice(0, limit);
+  var photos = rpPhotoIndex(ctx.ss);
+  records.forEach(function (r) {
+    var ph = photos[String(r.reportId)];
+    if (ph) r.photo = { source: String(ph['Source'] || ''), uploadedAt: String(ph['Uploaded At'] || '') };
+  });
+  return respondJSON({ success: true, count: records.length, records: records });
 }
 
 /* ==========================================================================
@@ -4150,4 +4164,98 @@ function handleDvReview(ctx, payload) {
     return respondJSON({ success: true, message: 'Report ' + id + ' rejected. It is kept in the Data Validator and not counted.' });
   }
   return respondJSON({ success: false, error: 'Unknown decision.' });
+}
+
+
+/* ==========================================================================
+   REPORT PHOTOS (v4.4) — one photo per report, stamped on the phone
+   (date, time, GPS, Farm & Block, land owner, activity, supervisor, Report ID).
+   Saved in a PRIVATE Drive folder: FarmOps Report Photos / yyyy / MM-Month.
+   The ReportPhotos sheet keeps the link, a small thumbnail and who uploaded it.
+   ========================================================================== */
+var RP_FOLDER = 'FarmOps Report Photos';
+var RP_MAX_BYTES = 3 * 1024 * 1024;
+
+function rpPhotoIndex(ss) {
+  var sheet = ss.getSheetByName(SHEET_NAMES.REPORT_PHOTOS);
+  var map = {};
+  if (sheet) readObjects(sheet).forEach(function (r) { map[String(r['Report ID'])] = r; });
+  return map;
+}
+
+function rpFolder(dateText) {
+  var it = DriveApp.getFoldersByName(RP_FOLDER);
+  var root = it.hasNext() ? it.next() : DriveApp.createFolder(RP_FOLDER);
+  var d = /^\d{4}-\d{2}/.test(String(dateText)) ? String(dateText) : Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
+  var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var sub = function (parent, name) { var f = parent.getFoldersByName(name); return f.hasNext() ? f.next() : parent.createFolder(name); };
+  var m = parseInt(d.substring(5, 7), 10);
+  return sub(sub(root, d.substring(0, 4)), d.substring(5, 7) + '-' + months[m - 1]);
+}
+
+/** The report the photo belongs to (activity sheet or Data Validator), or null. */
+function rpFindReport(ctx, payload) {
+  var id = String(payload.reportId || '');
+  var uuid = String(payload.uniqueUuid || '');
+  var act = String(payload.activityType || '');
+  var hit = readReports(ctx, act || 'All').filter(function (r) { return String(r.reportId) === id || (uuid && String(r.uniqueUuid) === uuid); })[0];
+  if (hit) return hit;
+  var dvSheet = ctx.ss.getSheetByName(SHEET_NAMES.DATA_VALIDATOR);
+  var dv = dvSheet ? readObjects(dvSheet).filter(function (r) { return String(r['Report ID']) === id; })[0] : null;
+  return dv ? dvParse(dv['Report JSON'], null) : null;
+}
+
+/** UPLOAD_REPORT_PHOTO: { reportId, uniqueUuid, activityType, data (base64 jpeg), thumb (data URL), source, photoDate, takenAt, gps } */
+function handleUploadReportPhoto(ctx, payload) {
+  var rec = rpFindReport(ctx, payload);
+  if (!rec) return respondJSON({ success: false, code: 'NOT_FOUND', error: 'The report is not on the server yet. The photo will be sent after the report.' });
+  if (!ctx.isAdmin && String(rec.userId) !== ctx.userId) return respondJSON({ success: false, code: 'FORBIDDEN', error: 'Only the person who made the report can add its photo.' });
+  var bytes;
+  try { bytes = Utilities.base64Decode(String(payload.data || '')); } catch (e) { bytes = null; }
+  if (!bytes || !bytes.length) return respondJSON({ success: false, error: 'The photo could not be read.' });
+  if (bytes.length > RP_MAX_BYTES) return respondJSON({ success: false, error: 'The photo is larger than 3 MB.' });
+  var thumb = String(payload.thumb || '');
+  if (!/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(thumb) || thumb.length > 45000) thumb = '';
+
+  var sheet = ctx.ss.getSheetByName(SHEET_NAMES.REPORT_PHOTOS);
+  var id = String(rec.reportId);
+  var old = readObjects(sheet).filter(function (r) { return String(r['Report ID']) === id; })[0] || null;
+  var file = rpFolder(rec.date).createFile(Utilities.newBlob(bytes, 'image/jpeg', id + '.jpg'));   // NOT shared publicly
+  if (old && old['File ID']) { try { DriveApp.getFileById(String(old['File ID'])).setTrashed(true); } catch (e) { /* already gone */ } }
+  var obj = {
+    'Report ID': id, 'Unique UUID': String(rec.uniqueUuid || ''), 'Activity Type': String(rec.activityType || ''), 'Report Date': String(rec.date || ''),
+    'Farm Block Code': farmBlockCode(rec.farmBlock), 'Farm & Block': safeText(String(rec.farmBlock || '')), 'Land Owner': safeText(String(rec.landOwnersName || '')),
+    'Parcel Number': safeText(String(rec.parcelNumber || '')), 'User ID': String(rec.userId || ''), 'Uploaded By': String(ctx.user['Full Name']),
+    'Source': String(payload.source) === 'gallery' ? 'Gallery' : 'Camera', 'Photo Date': safeText(String(payload.photoDate || '').substring(0, 30)),
+    'Taken At': safeText(String(payload.takenAt || '').substring(0, 40)), 'GPS': safeText(String(payload.gps || '').substring(0, 60)),
+    'File ID': file.getId(), 'Photo Link': file.getUrl(), 'Size KB': Math.round(bytes.length / 1024), 'Thumb': thumb, 'Uploaded At': new Date().toISOString()
+  };
+  if (old) updateObjectById(sheet, 'Report ID', id, obj); else appendObject(sheet, obj);
+  logAudit(ctx.userId, ctx.role, 'UPLOAD_REPORT_PHOTO', id, 'ReportPhotos', obj['Source'] + ' ' + obj['Size KB'] + ' KB');
+  return respondJSON({ success: true, reportId: id, message: 'Photo saved.' });
+}
+
+function rpCanSee(ctx, row, codes) {
+  return !codes || String(row['User ID']) === ctx.userId || !!codes[String(row['Farm Block Code'])];
+}
+
+/** REPORT_PHOTO: { reportId } -> the stamped photo (base64) if the user can see that report. */
+function handleReportPhoto(ctx, payload) {
+  var row = rpPhotoIndex(ctx.ss)[String(payload.reportId || '')];
+  if (!row) return respondJSON({ success: false, code: 'NOT_FOUND', error: 'This report has no photo.' });
+  if (!rpCanSee(ctx, row, joVisibleCodes(ctx))) return respondJSON({ success: false, error: 'You cannot open this photo.' });
+  var blob = DriveApp.getFileById(String(row['File ID'])).getBlob();
+  return respondJSON({ success: true, mimeType: 'image/jpeg', data: Utilities.base64Encode(blob.getBytes()), source: String(row['Source']),
+    photoDate: String(row['Photo Date'] || ''), uploadedBy: String(row['Uploaded By'] || ''), uploadedAt: String(row['Uploaded At'] || '') });
+}
+
+/** REPORT_PHOTO_THUMBS: { reportIds: [...] (max 100) } -> { thumbs: { reportId: dataUrl } } */
+function handleReportPhotoThumbs(ctx, payload) {
+  var ids = (Array.isArray(payload.reportIds) ? payload.reportIds : []).slice(0, 100).map(String);
+  var index = rpPhotoIndex(ctx.ss), codes = joVisibleCodes(ctx), out = {};
+  ids.forEach(function (id) {
+    var row = index[id];
+    if (row && rpCanSee(ctx, row, codes)) out[id] = { thumb: String(row['Thumb'] || ''), source: String(row['Source'] || '') };
+  });
+  return respondJSON({ success: true, thumbs: out });
 }
