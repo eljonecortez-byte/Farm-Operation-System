@@ -22,7 +22,7 @@
  *  MapRegistry, DeviceRegistry, SyncLogs, AuditLogs, SystemSettings
  */
 
-var APP_VERSION = '4.2.1';
+var APP_VERSION = '4.3.0';
 var MAP_CELL_LIMIT = 45000;       // characters per sheet cell for map data
 var MAP_MAX_CHARS = 3000000;      // ~3 MB per map (keeps phones fast)
 var TOKEN_TTL_DAYS = 30;          // Field devices can stay offline for long periods
@@ -33,7 +33,9 @@ var HASH_ROUNDS = 200;            // server-side key stretching rounds
 // SHA-256('admin123') — the old demo password. Accounts still using it are forced to change it.
 var DEFAULT_PASSWORD_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
 
-var ROLES = { ADMIN: 'Administrator', SUPERVISOR: 'Supervisor', FIELD: 'Field Personnel' };
+var ROLES = { ADMIN: 'Administrator', SUPERVISOR: 'Supervisor', FARM_OFFICER: 'Farm Officer', FIELD: 'Field Personnel' };
+/** Supervisor-level roles: Supervisor (his blocks) and Farm Officer (whole farms). */
+var SUP_ROLES = [ROLES.SUPERVISOR, ROLES.FARM_OFFICER];
 
 var ACTIVITY_TYPES = [
   'Regular Activity',
@@ -388,8 +390,8 @@ function doPost(e) {
       case 'SAVE_DROPDOWN':        requireRole(ctx, [ROLES.ADMIN]); return handleSaveDropdown(ctx, payload);
       case 'DELETE_DROPDOWN':      requireRole(ctx, [ROLES.ADMIN]); return handleDeleteDropdown(ctx, payload);
 
-      case 'SAVE_KPI':             requireRole(ctx, [ROLES.ADMIN, ROLES.SUPERVISOR]); return handleSaveKPI(ctx, payload);
-      case 'DELETE_KPI':           requireRole(ctx, [ROLES.ADMIN, ROLES.SUPERVISOR]); return handleDeleteKPI(ctx, payload);
+      case 'SAVE_KPI':             requireRole(ctx, [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.FARM_OFFICER]); return handleSaveKPI(ctx, payload);
+      case 'DELETE_KPI':           requireRole(ctx, [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.FARM_OFFICER]); return handleDeleteKPI(ctx, payload);
 
       case 'SAVE_USER':            requireRole(ctx, [ROLES.ADMIN]); return handleSaveUser(ctx, payload);
       case 'TOGGLE_USER_STATUS':   requireRole(ctx, [ROLES.ADMIN]); return handleToggleUserStatus(ctx, payload);
@@ -843,6 +845,35 @@ function farmCodeOf(code, name) {
   return 'N:' + norm(n && n[1].trim() ? n[1] : (name || String(code).substring(2)));
 }
 
+/** Farm key of a Farm & Block name: FARM:F04 for "Farm 4 Block 1"; FARM:N:<farm> for other names. */
+function farmKeyOf(name) {
+  var code = farmBlockCode(name);
+  var m = String(code).match(/^(F\d+)-B\d+$/);
+  if (m) return 'FARM:' + m[1];
+  return 'FARM:N:' + norm(farmBlockLabels(code, name).farm);
+}
+
+/** Farm keys a user is assigned to (Farm Officers only). */
+function assignedFarmKeys(u) {
+  return parseList(u['Assigned Farm and Blocks']).filter(function (x) { return /^FARM:/.test(x); });
+}
+
+/** Names of active Farm Officers per farm key, and of Supervisors per Farm & Block code (for the dashboard). */
+function responsibleNames(users, blocks) {
+  var farms = {}, sups = {};
+  var push = function (map, k, n) { map[k] = map[k] || []; if (map[k].indexOf(n) === -1) map[k].push(n); };
+  users.forEach(function (u) {
+    if (norm(u['Account Status']) !== 'active') return;
+    var name = String(u['Full Name']);
+    if (String(u['Role']) === ROLES.FARM_OFFICER) assignedFarmKeys(u).forEach(function (k) { push(farms, k, name); });
+    if (String(u['Role']) === ROLES.SUPERVISOR) {
+      var c = resolveAssignedCodes(u['Assigned Farm and Blocks'], blocks);
+      if (c !== 'ALL') c.forEach(function (code) { push(sups, code, name); });
+    }
+  });
+  return { farmOfficers: farms, blockSupervisors: sups };
+}
+
 function farmBlockLabels(code, name) {
   var m = String(code).match(/^F(\d+)-B(\d+)$/);
   if (m) return { farm: 'Farm ' + m[1], block: 'Block ' + parseInt(m[2], 10), full: 'Farm ' + m[1] + ' – Block ' + parseInt(m[2], 10) };
@@ -866,6 +897,10 @@ function resolveAssignedCodes(raw, blocks) {
   var codes = [];
   var add = function (c) { if (c && codes.indexOf(c) === -1) codes.push(c); };
   list.forEach(function (item) {
+    if (/^FARM:/.test(item)) {   // Farm Officer: a whole farm, including blocks enrolled later
+      blocks.forEach(function (b) { if (farmKeyOf(b['Farm and Block Name']) === item) add(farmBlockCode(b['Farm and Block Name'])); });
+      return;
+    }
     if (isFarmBlockCode(item)) { add(item); return; }
     var byId = blocks.filter(function (b) { return String(b['Block ID']) === item; })[0];
     add(farmBlockCode(byId ? byId['Farm and Block Name'] : item));
@@ -890,7 +925,7 @@ function migrateUserAssignmentsToFarmBlocks(ss) {
   var blocks = readObjects(ss.getSheetByName(SHEET_NAMES.FARMS_BLOCKS));
   readObjects(sheet).forEach(function (u) {
     var raw = String(u['Assigned Farm and Blocks'] || '');
-    if (!raw.trim()) return;
+    if (!raw.trim() || /FARM:/.test(raw)) return;   // Farm Officers keep whole farms
     var codes = resolveAssignedCodes(raw, blocks);
     var value = codes === 'ALL' ? 'ALL' : codes.join(', ');
     if (value !== raw) updateObjectById(sheet, 'User ID', u['User ID'], { 'Assigned Farm and Blocks': value });
@@ -1034,6 +1069,7 @@ function publicUser(u, blocks, supMap) {
     assignedSupervisor: supervisor,
     assignedFarmAndBlocks: ids === 'ALL' ? ['ALL'] : ids,   // Block IDs covered (used for scope on the device)
     assignedFarmBlockCodes: (function () { var c = resolveAssignedCodes(u['Assigned Farm and Blocks'], blocks); return c === 'ALL' ? ['ALL'] : c; })(),
+    assignedFarms: assignedFarmKeys(u),                        // Farm Officer: whole farms (FARM:F04)
     assignedActivities: parseList(u['Assigned Activities']),
     accountStatus: String(u['Account Status'] || ''),
     dateCreated: String(u['Date Created'] || ''),
@@ -1208,6 +1244,7 @@ function handleGetBootstrapData(ctx) {
       .map(function (d) { return publicActivityDef(d); }),
     validationRules: readValidationRules(ss),
     serverToday: dvToday(),
+    responsible: responsibleNames(ctx.users, ctx.blocks),
     timestamp: new Date().toISOString()
   });
 }
@@ -2480,7 +2517,7 @@ function handleSaveUser(ctx, payload) {
     return respondJSON({ success: false, error: 'Username must be 3-30 characters (letters, numbers, . _ -).' });
   }
   if (!fullName) return respondJSON({ success: false, error: 'Full Name is required.' });
-  if ([ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.FIELD].indexOf(role) === -1) {
+  if ([ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.FARM_OFFICER, ROLES.FIELD].indexOf(role) === -1) {
     return respondJSON({ success: false, error: 'Invalid role.' });
   }
   var taken = users.some(function (u) {
@@ -2497,6 +2534,17 @@ function handleSaveUser(ctx, payload) {
   if (role === ROLES.ADMIN) {
     codes = 'ALL';
     blockIds = 'ALL';
+  } else if (role === ROLES.FARM_OFFICER) {
+    // Farm Officer: whole farms (FARM:F04 ...), so blocks enrolled later are included automatically
+    var reqFarms = (Array.isArray(data.assignedFarmAndBlocks) ? data.assignedFarmAndBlocks : parseList(data.assignedFarmAndBlocks))
+      .map(function (x) { return String(x).trim(); }).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    var knownFarms = {};
+    blocks.forEach(function (b) { if (norm(b['Status']) !== 'deactivated') knownFarms[farmKeyOf(b['Farm and Block Name'])] = true; });
+    var badFarms = reqFarms.filter(function (k) { return !knownFarms[k]; });
+    if (badFarms.length) return respondJSON({ success: false, error: 'Unknown farm: ' + badFarms.map(function (k) { return k.replace(/^FARM:(N:)?/, ''); }).join(', ') + '.' });
+    if (!reqFarms.length) return respondJSON({ success: false, error: 'Please assign at least one Farm to the Farm Officer.' });
+    codes = reqFarms;
+    blockIds = resolveAssignedBlockIds(codes.join(','), blocks);
   } else {
     var requested = Array.isArray(data.assignedFarmAndBlocks) ? data.assignedFarmAndBlocks : parseList(data.assignedFarmAndBlocks);
     codes = resolveAssignedCodes(requested.join(','), blocks);   // duplicates are removed here
@@ -3174,6 +3222,7 @@ function joUserCovers(ctx, userId, code) {
 
 function joIsBoss(ctx, code) {
   if (ctx.isAdmin) return true;
+  if (ctx.role === ROLES.FARM_OFFICER) return ctx.scopeBlocks.some(function (b) { return farmBlockCode(b['Farm and Block Name']) === code; });
   return ctx.role === ROLES.SUPERVISOR && joSupervisorsOf(ctx, code).some(function (s) { return String(s['User ID']) === ctx.userId; });
 }
 
@@ -3267,7 +3316,7 @@ function handleJoSync(ctx, payload) {
 
   // people who can be assigned (admin / supervisor only)
   var assignees = [];
-  if (ctx.isAdmin || ctx.role === ROLES.SUPERVISOR) {
+  if (ctx.isAdmin || SUP_ROLES.indexOf(ctx.role) !== -1) {
     ctx.users.forEach(function (u) {
       if (norm(u['Account Status']) !== 'active' || String(u['Role']) === ROLES.ADMIN) return;
       var c = resolveAssignedCodes(u['Assigned Farm and Blocks'], ctx.blocks);
@@ -3373,7 +3422,7 @@ function joApply(ctx, st, tx) {
   }
 
   if (type === 'CREATE') {
-    if (!(ctx.isAdmin || ctx.role === ROLES.SUPERVISOR)) throw joFail('Only Administrators and Supervisors can create job orders.');
+    if (!(ctx.isAdmin || SUP_ROLES.indexOf(ctx.role) !== -1)) throw joFail('Only Administrators, Farm Officers and Supervisors can create job orders.');
     var code = String(data.farmBlockCode || '');
     var blocksOfCode = ctx.blocks.filter(function (b) { return norm(b['Status']) !== 'deactivated' && farmBlockCode(b['Farm and Block Name']) === code; });
     if (!blocksOfCode.length) throw joFail('Farm & Block ' + code + ' was not found.');
@@ -3588,7 +3637,7 @@ var WEATHER_MUNICIPALITY = 'Rizal, Palawan';
 var WEATHER_CACHE_SECONDS = 3 * 60 * 60;
 
 function handleGetWeather(ctx, payload) {
-  requireRole(ctx, [ROLES.ADMIN, ROLES.SUPERVISOR]);
+  requireRole(ctx, [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.FARM_OFFICER]);
   var cache = CacheService.getScriptCache();
   if (!payload.force) {
     var hit = cache.get('weather:v1');
