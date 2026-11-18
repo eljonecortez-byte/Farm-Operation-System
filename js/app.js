@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.2.0';
+const FRONTEND_VERSION = '4.2.1';
 
 class FarmOpsApp {
   constructor() {
@@ -4039,9 +4039,23 @@ class FarmOpsApp {
     if (!st) return;
     const wasExisting = !!st.existing;
     st.existing = lo;
+    st.reuse = false;
     const nameEl = document.getElementById('enr-landowner');
     const box = document.getElementById('enr-existing');
     const help = document.getElementById('enr-no-help');
+    // A deactivated land owner without active entries: its CLAIF Number can be used again (any name)
+    if (lo && lo.status === 'Deactivated' && !st.blocks.some((b) => String(b.landOwnerId) === String(lo.landOwnerId) && b.status !== 'Deactivated')) {
+      st.reuse = true;
+      if (!wasExisting || !nameEl.value.trim()) nameEl.value = lo.landOwnerName;
+      nameEl.readOnly = false;
+      document.getElementById('enr-name-help').textContent = 'You can change the name.';
+      help.innerHTML = '♻️ This CLAIF Number was <strong>deactivated</strong> — it can be used again.';
+      box.innerHTML = `<div class="enr-existing" style="background:#fffbeb;border-color:#fde68a;">
+        <div style="font-weight:700;margin-bottom:4px;">♻️ ${this.esc(lo.landOwnerNo)} was used by ${this.esc(lo.landOwnerName)} (deactivated, no active parcels / blocks)</div>
+        <div class="form-helper">Type the Land Owner Name and the new entries. Saving makes ${this.esc(lo.landOwnerNo)} active again under that name. Old reports keep the old name as history.</div>
+      </div>`;
+      return;
+    }
     if (!lo) {
       if (wasExisting) nameEl.value = '';
       nameEl.readOnly = false;
@@ -4096,7 +4110,7 @@ class FarmOpsApp {
       .filter((b) => ownerId && String(b.landOwnerId) === ownerId && b.status !== 'Deactivated')
       .map((b) => String(b.parcelNumber).trim().toLowerCase()));
     // Another land owner with the same name must not have the same Parcel + Farm & Block (reports would mix)
-    const ownerName = (st.existing ? st.existing.landOwnerName : name).trim().toLowerCase();
+    const ownerName = (st.existing && !st.reuse ? st.existing.landOwnerName : name).trim().toLowerCase();
     const clashOf = (parcel, block) => (st.blocks || []).find((b) => String(b.landOwnerId) !== String(ownerId) && b.status !== 'Deactivated' &&
       String(b.landOwnerName).trim().toLowerCase() === ownerName && String(b.parcelNumber).trim().toLowerCase() === parcel &&
       String(b.farmBlockName).trim().toLowerCase() === String(block).trim().toLowerCase());
@@ -4163,7 +4177,9 @@ class FarmOpsApp {
         <div><div class="form-helper">Land Owner Name</div><strong>${e(enrollment.landOwnerName)}</strong></div>
         <div><div class="form-helper">Sequences</div><strong>${pCount} Priority &bull; ${enrollment.entries.length - pCount} Not Priority</strong></div>
       </div>
-      <div class="form-helper" style="margin-bottom:8px;">${isExisting
+      <div class="form-helper" style="margin-bottom:8px;">${this._enr && this._enr.reuse
+        ? 'This CLAIF Number was deactivated: it becomes <strong>active again</strong> under this name.'
+        : isExisting
         ? 'Existing land owner: these entries will be <strong>added</strong>. Saved records stay as they are.'
         : 'New land owner.'}</div>
       <div class="table-responsive">
