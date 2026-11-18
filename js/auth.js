@@ -41,7 +41,9 @@ class AuthService {
   getToken() { return this.currentUser ? this.currentUser.sessionToken || '' : ''; }
   isAuthenticated() { return !!this.currentUser; }
   isAdmin() { return !!this.currentUser && this.currentUser.role === 'Administrator'; }
-  isSupervisor() { return !!this.currentUser && this.currentUser.role === 'Supervisor'; }
+  /** Supervisor-level: a Supervisor (his blocks) or a Farm Officer (his whole farms). */
+  isSupervisor() { return !!this.currentUser && ['Supervisor', 'Farm Officer'].includes(this.currentUser.role); }
+  isFarmOfficer() { return !!this.currentUser && this.currentUser.role === 'Farm Officer'; }
   isSupervisorOrAdmin() { return this.isAdmin() || this.isSupervisor(); }
   isFieldPersonnel() { return !!this.currentUser && this.currentUser.role === 'Field Personnel'; }
   getUserRole() { return this.currentUser ? this.currentUser.role : 'Guest'; }
