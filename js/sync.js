@@ -353,6 +353,7 @@ class SyncService {
     await db.setSetting('customActivities', Array.isArray(result.customActivities) ? result.customActivities : []);
     if (Array.isArray(result.validationRules)) await db.setSetting('validationRules', result.validationRules);
     if (result.serverToday) await db.setSetting('serverToday', result.serverToday);
+    if (result.responsible) await db.setSetting('responsible', result.responsible);
 
     const settings = result.settings || {};
     for (const key of ['workingDaysPerWeek', 'restDays', 'dailyWorkingHours', 'holidays', 'activeMapVersion']) {
