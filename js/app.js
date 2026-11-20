@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.7.0';
+const FRONTEND_VERSION = '4.8.0';
 
 class FarmOpsApp {
   constructor() {
@@ -465,6 +465,10 @@ class FarmOpsApp {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V11"/><path d="M12 11C10 6 6 5 3 6c3 1 5 3 6 6"/><path d="M12 11c2-5 6-6 9-5-3 1-5 3-6 6"/><path d="M12 11c-1-4-4-7-8-8 3 2 5 5 5 8"/><path d="M12 11c1-4 4-7 8-8-3 2-5 5-5 8"/></svg>
         <span>Palm Category Summary</span>
       </div>
+      <div class="nav-link ${this.currentView === 'productivity' ? 'active' : ''}" onclick="app.navigateTo('productivity')">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg>
+        <span>Productivity</span>
+      </div>
       <div class="nav-link ${this.currentView === 'manpower-monitoring' ? 'active' : ''}" onclick="app.navigateTo('manpower-monitoring')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span>Manpower Monitoring</span>
@@ -675,6 +679,11 @@ class FarmOpsApp {
       case 'cycle-monitoring':
         if (titleEl) titleEl.textContent = 'Cycle Monitoring';
         await this.renderCycleMonitoringView(container);
+        break;
+
+      case 'productivity':
+        if (titleEl) titleEl.textContent = 'Productivity';
+        await this.renderProductivityView(container);
         break;
 
       case 'palm-summary':
