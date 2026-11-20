@@ -71,6 +71,7 @@ Object.assign(FarmOpsApp.prototype, {
     const stamp = (r) => `${r.date || ''}|${r.timestamp || r.createdTimestamp || r.serverTimestamp || ''}`;
     const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
     const defHours = this.pdDefaultHours ? await this.pdDefaultHours() : 8;
+    const shares = this.pdCensusShares ? this.pdCensusShares(reports, defHours) : null;   // one day's hours counted once
 
     // latest census per row (+ palm range)
     const latest = new Map();
@@ -98,7 +99,7 @@ Object.assign(FarmOpsApp.prototype, {
       const row = rows.get(rowKey);
       PS_CATS.forEach((c) => { row.v[c.key] += num(r[c.key]); });
       row.problem += num(r.problemPalms);
-      row.wh += (num(r.manpowerCount) || num(r.manpower) || 1) * (num(r.hoursWorked) || defHours);   // worker-hours of this census
+      row.wh += shares ? (shares.get(r.reportId) || 0) : (num(r.manpowerCount) || num(r.manpower) || 1) * (num(r.hoursWorked) || defHours);   // this census' share of the day
       row.censuses++;
       if (String(r.date || '') > row.last) row.last = String(r.date || '');
     });
@@ -246,7 +247,7 @@ Object.assign(FarmOpsApp.prototype, {
       </div>
       <div class="form-helper" style="margin-top:8px;">
         ${f.mode === 'latest' ? 'Latest census of each parcel / Farm &amp; Block (and each palm range) — older counts of the same palms are not added again.' : 'Sum of every census report — a block counted twice is added twice.'}
-        Problem Palms are not added to the Overall Total. Worker-hours = Manpower × Hours Worked of the census reports; Time / palm = minutes one worker spends per palm.
+        Problem Palms are not added to the Overall Total. Worker-hours: each supervisor’s day (manpower × hours of the day) is counted once and shared between that day’s census forms by palms; Time / palm = minutes one worker spends per palm.
         ${f.showReg ? 'Registered = Palm Count in Land Owner Enrollment (parcels with a census).' : ''}
         ${f.showReg && d.noPalmCount ? `<br>⚠️ <strong>${d.noPalmCount}</strong> parcel(s) here have no registered Palm Count yet (shown as —${d.owners.some((o) => o.regRows && o.regRows < o.rows.length) ? '; * = only part of the land owner\'s parcels have one' : ''}). Add it in Land Owner Enrollment ✏️ or the Palm Count column of the FarmsAndBlocks sheet.` : ''}
         ${d.noCensus ? `<br>${d.noCensus} parcel / Farm &amp; Block row(s) you can see have no census yet.` : ''}
