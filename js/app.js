@@ -6,7 +6,7 @@
  */
 
 // Must match APP_VERSION in Code.gs. Land owner edits are refused by the server when they differ.
-const FRONTEND_VERSION = '4.5.0';
+const FRONTEND_VERSION = '4.6.0';
 
 class FarmOpsApp {
   constructor() {
@@ -917,7 +917,7 @@ class FarmOpsApp {
 
     container.innerHTML = `
       <!-- Tropical Farm Header Banner with Animated Palm Tree -->
-      <div class="card" style="background: linear-gradient(135deg, #064e3b 0%, #14532d 60%, #166534 100%); color: #ffffff; padding: 20px 24px; position: relative; overflow: hidden; margin-bottom: 22px;">
+      <div class="card" style="background: linear-gradient(135deg, var(--brand-1, #064e3b) 0%, var(--brand-2, #14532d) 60%, var(--brand-3, #166534) 100%); color: #ffffff; border-color: transparent; padding: 20px 24px; position: relative; overflow: hidden; margin-bottom: 22px;">
         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
           <div>
             <span class="badge" style="background: rgba(255,255,255,0.2); color: #ffffff; margin-bottom: 8px;">
