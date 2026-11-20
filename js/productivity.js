@@ -45,11 +45,17 @@ Object.assign(FarmOpsApp.prototype, {
     const form = root && [...root.querySelectorAll('form')].find((f) => PD_FORMS.includes(f.id));
     if (!form || form.querySelector('#pd-hours')) return;
     const def = await this.pdDefaultHours();
+    const census = form.id === 'form-palm-category';
+    const dayKey = 'pd:day:' + auth.getUserId() + ':' + new Date().toISOString().slice(0, 10);
+    const dayHours = census ? this.pdNum(await db.getSetting(dayKey)) : 0;
+    const start = dayHours > 0 ? dayHours : def;
     const box = (extra = '') => `
       <div class="form-group" id="pd-hours-group">
-        <label class="form-label required">⏱️ Hours Worked</label>
-        <input type="number" id="pd-hours" class="form-control" min="0.5" max="24" step="0.5" value="${def}" required />
-        <div class="form-helper" id="pd-hours-help">Filled with ${def} hours. Change it only on a short day.${extra}</div>
+        <label class="form-label required">⏱️ ${census ? 'Hours worked today (whole day)' : 'Hours Worked'}</label>
+        <input type="number" id="pd-hours" class="form-control" min="0.5" max="24" step="0.5" value="${start}" placeholder="${def}" required />
+        <div class="form-helper" id="pd-hours-help">${census
+          ? 'The whole day, typed once — it is <strong>not</strong> added again for every palm. Time per palm = palms counted today ÷ (manpower × these hours).'
+          : `Filled with ${def} hours. Change it only on a short day.${extra}`}</div>
       </div>`;
     if (form.id === 'form-seednut') {
       const target = form.querySelector('#seed-nuts-collected');
@@ -65,6 +71,10 @@ Object.assign(FarmOpsApp.prototype, {
       if (grp) grp.insertAdjacentHTML('afterend', box(form.id === 'form-regular-activity' ? ' For more than one job, type the hours of each job below.' : ''));
       else form.insertAdjacentHTML('afterbegin', box());
     }
+    const hoursEl = form.querySelector('#pd-hours');
+    if (!(this.pdNum(hoursEl.value) > 0)) hoursEl.value = start;   // never start empty
+    hoursEl.addEventListener('blur', () => { if (!(this.pdNum(hoursEl.value) > 0)) { hoursEl.value = start; if (form.id === 'form-regular-activity') this.pdRefreshJobs(); } });
+    if (census) hoursEl.addEventListener('change', () => { if (this.pdNum(hoursEl.value) > 0) db.setSetting(dayKey, this.pdNum(hoursEl.value)); });
     if (form.id === 'form-regular-activity') {
       PD_REG_JOBS.forEach((j) => {
         const inp = form.querySelector('#' + j.input);
@@ -110,7 +120,9 @@ Object.assign(FarmOpsApp.prototype, {
   },
 
   pdCheck(form) {
-    const total = this.pdNum((form.querySelector('#pd-hours') || {}).value);
+    const hEl = form.querySelector('#pd-hours');
+    if (hEl && !(this.pdNum(hEl.value) > 0)) hEl.value = this._pdHours || 8;   // empty box = the normal day
+    const total = this.pdNum((hEl || {}).value);
     if (!(total > 0) || total > 24) return 'Hours Worked must be between 0.5 and 24.';
     if (form.id === 'form-seednut' && !(this.pdNum(form.querySelector('#pd-manpower').value) >= 1)) return 'Manpower must be at least 1.';
     if (form.id !== 'form-regular-activity') return '';
@@ -141,6 +153,32 @@ Object.assign(FarmOpsApp.prototype, {
     return r.syncStatus !== 'REJECTED' && !['INVALID', 'FOR REVIEW', 'REJECTED'].includes(String(r.validationStatus || '').toUpperCase());
   },
 
+  /**
+   * Palm census is often one form per palm, so the day's hours must not be added for every form.
+   * Per supervisor per day: worker-hours = most manpower × the day's hours (counted once), shared between
+   * that day's census reports by the number of palms in each. Returns Map reportId -> worker-hours.
+   */
+  pdCensusShares(reports, defHours) {
+    const days = new Map();
+    reports.forEach((r) => {
+      if (r.activityType !== 'Palm Category Activity') return;
+      const palms = PD_ACTS.find((a) => a.key === 'pc').qty(r);
+      const k = (r.userId || r.employeeName) + '|' + String(r.date || '').slice(0, 10);
+      if (!days.has(k)) days.set(k, { reports: [], palms: 0, hours: 0, manpower: 0 });
+      const d = days.get(k);
+      d.reports.push([r.reportId, palms]);
+      d.palms += palms;
+      d.hours = Math.max(d.hours, this.pdNum(r.hoursWorked));
+      d.manpower = Math.max(d.manpower, this.pdNum(r.manpowerCount) || this.pdNum(r.manpower) || 1);
+    });
+    const out = new Map();
+    days.forEach((d) => {
+      const wh = d.manpower * (d.hours || defHours);
+      d.reports.forEach(([id, palms]) => out.set(id, d.palms > 0 ? wh * palms / d.palms : 0));
+    });
+    return out;
+  },
+
   /** { qty, workerHours } of one report for one activity, or null when it does not count / cannot be split. */
   pdMeasure(r, act, defHours) {
     if (r.activityType !== act.type) return null;
@@ -155,6 +193,8 @@ Object.assign(FarmOpsApp.prototype, {
         if (jobs > 1) return { qty, workerHours: 0, unsplit: true };
         hours = this.pdNum(r.hoursWorked) || defHours;
       }
+    } else if (act.key === 'pc' && this._pdShares) {
+      return { qty, workerHours: this._pdShares.get(r.reportId) || 0, defaulted: !(this.pdNum(r.hoursWorked) > 0) };
     } else {
       hours = this.pdNum(r.hoursWorked) || defHours;
     }
@@ -222,6 +262,7 @@ Object.assign(FarmOpsApp.prototype, {
     const e = (v) => this.esc(v);
     const groups = new Map();
     let unsplit = 0, defaulted = 0;
+    this._pdShares = act.key === 'pc' ? this.pdCensusShares(reports, def) : null;
     reports.forEach((r) => {
       if (period && f.period !== 'ALL' && !this.pgInPeriod(r, period)) return;
       const m = this.pdMeasure(r, act, def);
@@ -261,6 +302,7 @@ Object.assign(FarmOpsApp.prototype, {
         }).join('')}</tbody></table></div>` : `<div class="card" style="text-align:center;color:var(--text-muted);padding:30px;">No ${e(act.label)} reports in this period.</div>`}
       <div class="form-helper" style="margin-top:8px;">
         Speed compares with the average of everyone shown: Faster = 10% or more above, Slower = 10% or more below.
+        ${act.key === 'pc' ? '<br>Palm Census: each supervisor’s day is counted once (most manpower × hours of the day) and shared between that day’s census forms by the number of palms — one form per palm or a summary form both work.' : ''}
         ${defaulted ? `<br>${defaulted} report(s) were made before “Hours Worked” existed — counted as ${def} hours.` : ''}
         ${unsplit ? `<br>⚠️ ${unsplit} older report(s) had several jobs without the hours of each job, so they are not counted here.` : ''}
       </div>`;
