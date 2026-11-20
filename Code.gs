@@ -22,7 +22,7 @@
  *  MapRegistry, DeviceRegistry, SyncLogs, AuditLogs, SystemSettings
  */
 
-var APP_VERSION = '4.7.0';
+var APP_VERSION = '4.8.0';
 var MAP_CELL_LIMIT = 45000;       // characters per sheet cell for map data
 var MAP_MAX_CHARS = 3000000;      // ~3 MB per map (keeps phones fast)
 var TOKEN_TTL_DAYS = 30;          // Field devices can stay offline for long periods
@@ -117,41 +117,42 @@ var HEADERS = {
     'Weeding Rolling Slashing Ha', 'Round Weeding Palms', 'Compost Palms', 'Quantity Sacks',
     'Quantity Kilo', 'BOF Request No', 'Pruning Palms', 'Soil Drenching Premix Palms',
     'Quantity Liters', 'Foliar Request Code', 'Remarks', 'Device ID', 'Device Name',
-    'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Foliar Palms', 'Record ID', 'Validation Status'
+    'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Foliar Palms', 'Record ID', 'Validation Status',
+    'Hours Worked', 'Slashing Hours', 'Round Weeding Hours', 'Compost Hours', 'Pruning Hours', 'Foliar Hours', 'Soil Drenching Hours'
   ],
   IRREGULAR: [
     'Report ID', 'Unique UUID', 'User ID', 'Employee Name', 'Supervisor ID', 'Date',
     'Land Owners Name', 'Parcel Number', 'Farm & Block', 'Manpower',
     'Pest Treatment Soil Drench', 'Count of Palms', 'Quantity Liters', 'Foliar Request Number',
     'Irregular Activity', 'Count of Palms 2', 'Count of Manpower 2', 'Remarks',
-    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status'
+    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status', 'Hours Worked'
   ],
   OTHER: [
     'Report ID', 'Unique UUID', 'User ID', 'Employee Name', 'Supervisor ID', 'Date',
     'Land Owners Name', 'Parcel Number', 'Farm & Block', 'Manpower',
     'Other Activities', 'Quantity', 'Unit', 'Remarks',
-    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status'
+    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status', 'Hours Worked'
   ],
   PALM_CATEGORY: [
     'Report ID', 'Unique UUID', 'User ID', 'Employee Name', 'Supervisor ID', 'Timestamp',
     'Farm & Block', 'Land Owners Name', 'Parcel Number', 'Palm Number',
     'Seedling Stage', 'Juvenile Stage', 'Pre-trunk Reproductive Stage', 'Pre-trunk Fruiting Stage',
     'Mature Stage', 'Fruiting Stage', 'Problem Palms', 'Manpower Count', 'Remarks',
-    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'Date', 'CLAIF Number', 'Record ID', 'Validation Status'
+    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'Date', 'CLAIF Number', 'Record ID', 'Validation Status', 'Hours Worked'
   ],
   SEEDNUT: [
     'Report ID', 'Unique UUID', 'User ID', 'Employee Name', 'Supervisor ID', 'Date',
     'Area Code', 'Palm Number', 'Nut Count Collected', 'Count of Nuts for Next Collection',
     'Count of Rejected Nuts', 'GPS Latitude', 'GPS Longitude', 'GPS Accuracy', 'Remarks',
     'Device ID', 'Device Name', 'Browser OS', 'Server Timestamp', 'Sync Status',
-    'Land Owners Name', 'Parcel Number', 'Farm & Block', 'CLAIF Number', 'Record ID', 'Validation Status'
+    'Land Owners Name', 'Parcel Number', 'Farm & Block', 'CLAIF Number', 'Record ID', 'Validation Status', 'Manpower', 'Hours Worked'
   ],
   PEST_DISEASE: [
     'Report ID', 'Unique UUID', 'User ID', 'Employee Name', 'Supervisor ID', 'Date',
     'Land Owners Name', 'Parcel Number', 'Palm Numbers', 'Farm & Block',
     'Target Pest', 'Total Palms Affected', 'Input Used', 'Quantity', 'Unit',
     'Ratio', 'Method Used', 'Target Parts Application', 'Manpower Count', 'Remarks',
-    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status'
+    'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude', 'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status', 'Hours Worked'
   ],
   KPIS: [
     'KPI ID', 'Activity Type', 'Farm & Block', 'Land Owner', 'Parcel Number', 'Cycle',
@@ -225,7 +226,7 @@ var CUSTOM_PREFIX_HEADERS = [
 ];
 var CUSTOM_SUFFIX_HEADERS = [
   'Remarks', 'Device ID', 'Device Name', 'Browser OS', 'GPS Latitude', 'GPS Longitude',
-  'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status'
+  'Server Timestamp', 'Sync Status', 'CLAIF Number', 'Record ID', 'Validation Status', 'Hours Worked'
 ];
 
 /**
@@ -248,6 +249,13 @@ var REPORT_FIELDS = {
   'Parcel Number': ['parcelNumber', 's'],
   'Farm & Block': ['farmBlock', 's'],
   'Manpower': ['manpower', 'n'],
+  'Hours Worked': ['hoursWorked', 'n'],
+  'Slashing Hours': ['slashingHours', 'n'],
+  'Round Weeding Hours': ['roundWeedingHours', 'n'],
+  'Compost Hours': ['compostHours', 'n'],
+  'Pruning Hours': ['pruningHours', 'n'],
+  'Foliar Hours': ['foliarHours', 'n'],
+  'Soil Drenching Hours': ['soilDrenchingHours', 'n'],
   'Manpower Count': ['manpowerCount', 'n'],
   'Cycle': ['cycle', 's'],
   'Weeding Rolling Slashing Ha': ['weedingSlashingHa', 'n'],
