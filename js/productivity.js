@@ -155,7 +155,7 @@ Object.assign(FarmOpsApp.prototype, {
 
   /**
    * Palm census is often one form per palm, so the day's hours must not be added for every form.
-   * Per supervisor per day: worker-hours = most manpower × the day's hours (counted once), shared between
+   * Per supervisor per day: worker-hours = most manpower × the hours on the day's LAST form (counted once), shared between
    * that day's census reports by the number of palms in each. Returns Map reportId -> worker-hours.
    */
   pdCensusShares(reports, defHours) {
@@ -164,11 +164,13 @@ Object.assign(FarmOpsApp.prototype, {
       if (r.activityType !== 'Palm Category Activity') return;
       const palms = PD_ACTS.find((a) => a.key === 'pc').qty(r);
       const k = (r.userId || r.employeeName) + '|' + String(r.date || '').slice(0, 10);
-      if (!days.has(k)) days.set(k, { reports: [], palms: 0, hours: 0, manpower: 0 });
+      if (!days.has(k)) days.set(k, { reports: [], palms: 0, hours: 0, last: '', manpower: 0 });
       const d = days.get(k);
       d.reports.push([r.reportId, palms]);
       d.palms += palms;
-      d.hours = Math.max(d.hours, this.pdNum(r.hoursWorked));
+      // the hours typed on the LAST form of the day win (a correction later in the day fixes the earlier forms)
+      const when = String(r.timestamp || r.createdTimestamp || r.serverTimestamp || '');
+      if (this.pdNum(r.hoursWorked) > 0 && when >= d.last) { d.hours = this.pdNum(r.hoursWorked); d.last = when; }
       d.manpower = Math.max(d.manpower, this.pdNum(r.manpowerCount) || this.pdNum(r.manpower) || 1);
     });
     const out = new Map();
@@ -302,7 +304,7 @@ Object.assign(FarmOpsApp.prototype, {
         }).join('')}</tbody></table></div>` : `<div class="card" style="text-align:center;color:var(--text-muted);padding:30px;">No ${e(act.label)} reports in this period.</div>`}
       <div class="form-helper" style="margin-top:8px;">
         Speed compares with the average of everyone shown: Faster = 10% or more above, Slower = 10% or more below.
-        ${act.key === 'pc' ? '<br>Palm Census: each supervisor’s day is counted once (most manpower × hours of the day) and shared between that day’s census forms by the number of palms — one form per palm or a summary form both work.' : ''}
+        ${act.key === 'pc' ? '<br>Palm Census: each supervisor’s day is counted once (most manpower × the hours on the day’s last form) and shared between that day’s census forms by the number of palms — one form per palm or a summary form both work.' : ''}
         ${defaulted ? `<br>${defaulted} report(s) were made before “Hours Worked” existed — counted as ${def} hours.` : ''}
         ${unsplit ? `<br>⚠️ ${unsplit} older report(s) had several jobs without the hours of each job, so they are not counted here.` : ''}
       </div>`;
