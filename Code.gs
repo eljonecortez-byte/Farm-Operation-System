@@ -22,7 +22,7 @@
  *  MapRegistry, DeviceRegistry, SyncLogs, AuditLogs, SystemSettings
  */
 
-var APP_VERSION = '4.5.0';
+var APP_VERSION = '4.6.0';
 var MAP_CELL_LIMIT = 45000;       // characters per sheet cell for map data
 var MAP_MAX_CHARS = 3000000;      // ~3 MB per map (keeps phones fast)
 var TOKEN_TTL_DAYS = 30;          // Field devices can stay offline for long periods
@@ -90,7 +90,7 @@ var HEADERS = {
   USERS: [
     'User ID', 'Employee ID', 'Full Name', 'Username', 'Password Hash', 'Role',
     'Assigned Supervisor', 'Assigned Farm and Blocks', 'Assigned Activities',
-    'Account Status', 'Date Created', 'Last Login', 'Must Change Password', 'Token Version', 'Profile Photo'
+    'Account Status', 'Date Created', 'Last Login', 'Must Change Password', 'Token Version', 'Profile Photo', 'Theme'
   ],
   PERMISSIONS: [
     'Permission ID', 'User ID', 'Can Manage Users', 'Can Manage Dropdowns',
@@ -327,7 +327,7 @@ var WRITE_ACTIONS = {
   CHANGE_PASSWORD: true, SAVE_MAP: true, DELETE_MAP: true, REGISTER_DEVICE: true,
   ENROLL_LANDOWNER: true, SET_BLOCK_STATUS: true, PING: true,
   SAVE_ACTIVITY_TYPE: true, SET_ACTIVITY_TYPE_STATUS: true,
-  UPDATE_LANDOWNER: true, UPDATE_BLOCK: true, DELETE_BLOCK: true, JO_SYNC: true, DV_REVIEW: true, UPLOAD_REPORT_PHOTO: true, SET_PROFILE_PHOTO: true
+  UPDATE_LANDOWNER: true, UPDATE_BLOCK: true, DELETE_BLOCK: true, JO_SYNC: true, DV_REVIEW: true, UPLOAD_REPORT_PHOTO: true, SET_PROFILE_PHOTO: true, SET_THEME: true
 };
 
 function doPost(e) {
@@ -411,6 +411,7 @@ function doPost(e) {
       case 'JO_ATTACHMENT':        return handleJoAttachment(ctx, payload);
       case 'UPLOAD_REPORT_PHOTO':  return handleUploadReportPhoto(ctx, payload);
       case 'SET_PROFILE_PHOTO':    return handleSetProfilePhoto(ctx, payload);
+      case 'SET_THEME':            return handleSetTheme(ctx, payload);
       case 'REPORT_PHOTO':         return handleReportPhoto(ctx, payload);
       case 'REPORT_PHOTO_THUMBS':  return handleReportPhotoThumbs(ctx, payload);
       case 'GET_WEATHER':          return handleGetWeather(ctx, payload);
@@ -1079,6 +1080,7 @@ function publicUser(u, blocks, supMap) {
     assignedFarmAndBlocks: ids === 'ALL' ? ['ALL'] : ids,   // Block IDs covered (used for scope on the device)
     assignedFarmBlockCodes: (function () { var c = resolveAssignedCodes(u['Assigned Farm and Blocks'], blocks); return c === 'ALL' ? ['ALL'] : c; })(),
     photo: /^data:image\/jpeg;base64,/.test(String(u['Profile Photo'] || '')) ? String(u['Profile Photo']) : '',   // small square (≈192 px)
+    theme: String(u['Theme'] || ''),                            // e.g. "ocean|dark" (colour | light / dark / auto)
     assignedFarms: assignedFarmKeys(u),                        // Farm Officer: whole farms (FARM:F04)
     assignedActivities: parseList(u['Assigned Activities']),
     accountStatus: String(u['Account Status'] || ''),
@@ -4279,4 +4281,20 @@ function handleSetProfilePhoto(ctx, payload) {
   updateObjectById(ctx.ss.getSheetByName(SHEET_NAMES.USERS), 'User ID', userId, { 'Profile Photo': photo });
   logAudit(ctx.userId, ctx.role, 'SET_PROFILE_PHOTO', userId, 'Users', photo ? 'Photo updated' : 'Photo removed');
   return respondJSON({ success: true, userId: userId, photo: photo, message: photo ? 'Profile photo saved.' : 'Profile photo removed.' });
+}
+
+
+/* ==========================================================================
+   THEME (v4.6) — each user's colour theme and light / dark mode, saved in the Users sheet ("Theme").
+   ========================================================================== */
+var THEME_COLOURS = ['palm', 'ocean', 'sunset', 'purple', 'coconut', 'slate'];
+var THEME_MODES = ['light', 'dark', 'auto'];
+
+function handleSetTheme(ctx, payload) {
+  var colour = String(payload.colour || 'palm');
+  var mode = String(payload.mode || 'light');
+  if (THEME_COLOURS.indexOf(colour) === -1 || THEME_MODES.indexOf(mode) === -1) return respondJSON({ success: false, error: 'Unknown theme.' });
+  var value = colour + '|' + mode;
+  updateObjectById(ctx.ss.getSheetByName(SHEET_NAMES.USERS), 'User ID', ctx.userId, { 'Theme': value });
+  return respondJSON({ success: true, theme: value, message: 'Theme saved.' });
 }
