@@ -226,7 +226,8 @@ class AuthService {
       assignedActivities: serverMe.assignedActivities,
       accountStatus: serverMe.accountStatus,
       mustChangePassword: serverMe.mustChangePassword,
-      photo: serverMe.photo !== undefined ? serverMe.photo : this.currentUser.photo
+      photo: serverMe.photo !== undefined ? serverMe.photo : this.currentUser.photo,
+      theme: serverMe.theme !== undefined ? serverMe.theme : this.currentUser.theme
     };
     await db.put('users', user);
     await db.setSetting('currentUser', user);
