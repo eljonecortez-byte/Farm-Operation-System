@@ -22,7 +22,7 @@
  *  MapRegistry, DeviceRegistry, SyncLogs, AuditLogs, SystemSettings
  */
 
-var APP_VERSION = '4.6.0';
+var APP_VERSION = '4.7.0';
 var MAP_CELL_LIMIT = 45000;       // characters per sheet cell for map data
 var MAP_MAX_CHARS = 3000000;      // ~3 MB per map (keeps phones fast)
 var TOKEN_TTL_DAYS = 30;          // Field devices can stay offline for long periods
