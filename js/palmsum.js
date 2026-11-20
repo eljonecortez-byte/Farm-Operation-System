@@ -28,7 +28,7 @@ Object.assign(FarmOpsApp.prototype, {
     if (document.getElementById('ps-style')) return;
     document.head.insertAdjacentHTML('beforeend', `<style id="ps-style">
       .ps-tw { overflow:auto; max-height:70vh; padding:0; }
-      .ps-table { border-collapse:separate; border-spacing:0; width:100%; font-size:13px; min-width:900px; }
+      .ps-table { border-collapse:separate; border-spacing:0; width:100%; font-size:13px; min-width:1060px; }
       .ps-table th, .ps-table td { padding:9px 8px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
       .ps-table thead th { white-space:normal; line-height:1.25; }
       .ps-table th { background:var(--bg-hover); font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted); position:sticky; top:0; z-index:2; vertical-align:bottom; }
@@ -39,6 +39,8 @@ Object.assign(FarmOpsApp.prototype, {
       .ps-table th.ps-total { z-index:3; }
       .ps-table .ps-prob { color:#b91c1c; font-weight:700; }
       .ps-table .ps-reg { color:var(--text-muted); }
+      .ps-table .ps-prod { color:#6b21a8; background:rgba(168, 85, 247, 0.06); }
+      html[data-mode="dark"] .ps-table .ps-prod { color:#d8b4fe; background:rgba(168, 85, 247, 0.10); }
       .ps-dot { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
       .ps-zero { color:var(--text-light, #cbd5e1); }
       .ps-sub { font-size:11.5px; color:var(--text-muted); font-weight:500; }
@@ -68,6 +70,7 @@ Object.assign(FarmOpsApp.prototype, {
       .filter((r) => r.activityType === 'Palm Category Activity' && r.syncStatus !== 'REJECTED');
     const stamp = (r) => `${r.date || ''}|${r.timestamp || r.createdTimestamp || r.serverTimestamp || ''}`;
     const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+    const defHours = this.pdDefaultHours ? await this.pdDefaultHours() : 8;
 
     // latest census per row (+ palm range)
     const latest = new Map();
@@ -89,12 +92,13 @@ Object.assign(FarmOpsApp.prototype, {
           ownerName: blk ? blk.landOwnerName : r.landOwnersName, claif: (blk && blk.landOwnerNo) || r.landOwnerNo || '',
           parcel: blk ? blk.parcelNumber : r.parcelNumber, farmBlock: blk ? blk.farmBlockName : r.farmBlock,
           category: blk ? this.entryCategory(blk) : '', registered: blk ? (parseInt(blk.palmCount, 10) || 0) : 0,
-          v: Object.fromEntries(PS_CATS.map((c) => [c.key, 0])), problem: 0, last: '', censuses: 0
+          v: Object.fromEntries(PS_CATS.map((c) => [c.key, 0])), problem: 0, last: '', censuses: 0, wh: 0
         });
       }
       const row = rows.get(rowKey);
       PS_CATS.forEach((c) => { row.v[c.key] += num(r[c.key]); });
       row.problem += num(r.problemPalms);
+      row.wh += (num(r.manpowerCount) || num(r.manpower) || 1) * (num(r.hoursWorked) || defHours);   // worker-hours of this census
       row.censuses++;
       if (String(r.date || '') > row.last) row.last = String(r.date || '');
     });
@@ -107,11 +111,12 @@ Object.assign(FarmOpsApp.prototype, {
     // land owners
     const owners = new Map();
     list.forEach((row) => {
-      if (!owners.has(row.ownerKey)) owners.set(row.ownerKey, { key: row.ownerKey, name: row.ownerName, claif: row.claif, rows: [], v: Object.fromEntries(PS_CATS.map((c) => [c.key, 0])), problem: 0, registered: 0, regRows: 0, diff: 0, last: '' });
+      if (!owners.has(row.ownerKey)) owners.set(row.ownerKey, { key: row.ownerKey, name: row.ownerName, claif: row.claif, rows: [], v: Object.fromEntries(PS_CATS.map((c) => [c.key, 0])), problem: 0, registered: 0, regRows: 0, diff: 0, last: '', wh: 0 });
       const o = owners.get(row.ownerKey);
       o.rows.push(row);
       PS_CATS.forEach((c) => { o.v[c.key] += row.v[c.key]; });
       o.problem += row.problem;
+      o.wh += row.wh;
       row.total = PS_CATS.reduce((s, c) => s + row.v[c.key], 0);
       if (row.registered > 0) { o.registered += row.registered; o.regRows++; o.diff += row.total - row.registered; }
       if (row.last > o.last) o.last = row.last;
@@ -199,6 +204,9 @@ Object.assign(FarmOpsApp.prototype, {
       body.innerHTML = `<div class="card" style="text-align:center;color:var(--text-muted);padding:30px;">${d.reportCount ? 'No land owners match the filters.' : 'No Palm Category census yet. Reports from the Palm Category form appear here (press 🔄 Refresh to download the latest).'}</div>`;
       return;
     }
+    const gw = d.owners.reduce((s, o) => s + o.wh, 0);
+    const prodCols = (x) => { const rate = x.wh > 0 ? x.total / x.wh : 0;
+      return `<td class="ps-prod">${x.wh ? Math.round(x.wh * 10) / 10 : '—'}</td><td class="ps-prod">${rate ? (rate >= 10 ? rate.toFixed(0) : rate.toFixed(1)) : '—'}</td><td class="ps-prod"><strong>${rate ? (60 / rate < 1 ? Math.round(3600 / rate) + ' sec' : (60 / rate).toFixed(1) + ' min') : '—'}</strong></td>`; };
     const regCols = (reg, dv, star) => (f.showReg ? `<td class="ps-reg">${reg > 0 ? reg.toLocaleString() + (star ? '*' : '') : '<span class="ps-zero">—</span>'}</td><td>${diff(null, reg, dv)}</td>` : '');
     const short = (s) => (s ? new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
 
@@ -206,23 +214,23 @@ Object.assign(FarmOpsApp.prototype, {
       <div class="card ps-tw"><table class="ps-table">
         <thead><tr><th class="ps-name">Land Owner</th>
           ${PS_CATS.map((c) => `<th><span class="ps-dot" style="--c:${c.color};background:var(--c)"></span>${e(c.label)}</th>`).join('')}
-          <th class="ps-prob">⚠️ Problem</th>${f.showReg ? '<th class="ps-reg">Registered</th><th>Difference</th>' : ''}<th class="ps-total">Overall Total</th></tr></thead>
+          <th class="ps-prob">⚠️ Problem</th>${f.showReg ? '<th class="ps-reg">Registered</th><th>Difference</th>' : ''}<th class="ps-prod">Worker-hours</th><th class="ps-prod">Palms / worker-hr</th><th class="ps-prod">⏱️ Time / palm</th><th class="ps-total">Overall Total</th></tr></thead>
         <tbody>${d.owners.map((o) => {
           const open = f.open.has(o.key);
           return `<tr class="ps-lo ${open ? 'open' : ''}" onclick="app.psToggle('${e(o.key)}')">
               <td class="ps-name"><span class="ps-chev">▶</span><strong>${e(o.name)}</strong> <span class="ps-sub">${e(o.claif)} &bull; ${o.rows.length} parcel(s)</span>${mix(o)}</td>
               ${PS_CATS.map((c) => `<td>${n(o.v[c.key])}</td>`).join('')}
-              <td class="ps-prob">${n(o.problem)}</td>${regCols(o.registered, o.diff, o.regRows && o.regRows < o.rows.length)}
+              <td class="ps-prob">${n(o.problem)}</td>${regCols(o.registered, o.diff, o.regRows && o.regRows < o.rows.length)}${prodCols(o)}
               <td class="ps-total">${o.total.toLocaleString()}</td></tr>` +
             (open ? o.rows.map((r) => `<tr class="ps-row">
               <td class="ps-name">${e(r.parcel)} &bull; ${e(r.info.full.replace(/^Farm 0+(\d)/, 'Farm $1'))} <span class="ps-sub">census ${short(r.last)}${r.censuses > 1 ? ` &bull; ${r.censuses} ranges/reports` : ''}</span></td>
               ${PS_CATS.map((c) => `<td>${n(r.v[c.key])}</td>`).join('')}
-              <td class="ps-prob">${n(r.problem)}</td>${regCols(r.registered, r.total - r.registered, false)}
+              <td class="ps-prob">${n(r.problem)}</td>${regCols(r.registered, r.total - r.registered, false)}${prodCols(r)}
               <td class="ps-total">${r.total.toLocaleString()}</td></tr>`).join('') : '');
         }).join('')}</tbody>
         <tfoot><tr class="ps-foot"><td class="ps-name">TOTAL &bull; ${d.owners.length} land owner(s)</td>
           ${PS_CATS.map((c) => `<td>${G[c.key].toLocaleString()}</td>`).join('')}<td>${gp.toLocaleString()}</td>
-          ${f.showReg ? `<td>${gr.toLocaleString()}</td><td>${(gd > 0 ? '+' : '') + gd.toLocaleString()}</td>` : ''}<td class="ps-total" style="background:var(--brand-1, #064e3b) !important;">${gt.toLocaleString()}</td></tr></tfoot>
+          ${f.showReg ? `<td>${gr.toLocaleString()}</td><td>${(gd > 0 ? '+' : '') + gd.toLocaleString()}</td>` : ''}${prodCols({ total: gt, wh: gw }).replace(/ class="ps-prod"/g, '')}<td class="ps-total" style="background:var(--brand-1, #064e3b) !important;">${gt.toLocaleString()}</td></tr></tfoot>
       </table></div>
       <div class="ps-cards">${d.owners.map((o) => `
         <div class="ps-card">
@@ -232,13 +240,13 @@ Object.assign(FarmOpsApp.prototype, {
           </div>
           ${mix(o, '100%')}
           <div class="ps-card-grid">${PS_CATS.map((c) => `<div>${e(c.label)}<b>${o.v[c.key].toLocaleString()}</b></div>`).join('')}</div>
-          <div class="ps-sub" style="margin-top:6px;"><span style="color:#b91c1c;">⚠️ Problem: ${o.problem.toLocaleString()}</span>${f.showReg && o.registered ? ` &bull; Registered ${o.registered.toLocaleString()} (${o.diff > 0 ? '+' : ''}${o.diff.toLocaleString()})` : ''}</div>
+          <div class="ps-sub" style="margin-top:6px;">${o.wh ? `⏱️ <strong>${(60 / (o.total / o.wh)).toFixed(1)} min / palm</strong> &bull; ${Math.round(o.wh)} worker-hrs<br>` : ''}<span style="color:#b91c1c;">⚠️ Problem: ${o.problem.toLocaleString()}</span>${f.showReg && o.registered ? ` &bull; Registered ${o.registered.toLocaleString()} (${o.diff > 0 ? '+' : ''}${o.diff.toLocaleString()})` : ''}</div>
         </div>`).join('')}
         <div class="ps-card"><strong>TOTAL</strong> &bull; ${gt.toLocaleString()} palms &bull; <span style="color:#b91c1c;">⚠️ ${gp.toLocaleString()}</span></div>
       </div>
       <div class="form-helper" style="margin-top:8px;">
         ${f.mode === 'latest' ? 'Latest census of each parcel / Farm &amp; Block (and each palm range) — older counts of the same palms are not added again.' : 'Sum of every census report — a block counted twice is added twice.'}
-        Problem Palms are not added to the Overall Total.
+        Problem Palms are not added to the Overall Total. Worker-hours = Manpower × Hours Worked of the census reports; Time / palm = minutes one worker spends per palm.
         ${f.showReg ? 'Registered = Palm Count in Land Owner Enrollment (parcels with a census).' : ''}
         ${f.showReg && d.noPalmCount ? `<br>⚠️ <strong>${d.noPalmCount}</strong> parcel(s) here have no registered Palm Count yet (shown as —${d.owners.some((o) => o.regRows && o.regRows < o.rows.length) ? '; * = only part of the land owner\'s parcels have one' : ''}). Add it in Land Owner Enrollment ✏️ or the Palm Count column of the FarmsAndBlocks sheet.` : ''}
         ${d.noCensus ? `<br>${d.noCensus} parcel / Farm &amp; Block row(s) you can see have no census yet.` : ''}
@@ -265,10 +273,10 @@ Object.assign(FarmOpsApp.prototype, {
     const e = (v) => this.esc(v);
     const reg = this._ps.showReg;
     const head = `<tr style="background:#14532d;color:#ffffff;font-weight:bold;"><th>CLAIF Number</th><th>Land Owner</th><th>Parcel</th><th>Farm &amp; Block</th><th>Last Census</th>
-      ${PS_CATS.map((c) => `<th>${e(c.label)}</th>`).join('')}<th>Problem Palms</th>${reg ? '<th>Registered</th><th>Difference</th>' : ''}<th>Overall Total</th></tr>`;
+      ${PS_CATS.map((c) => `<th>${e(c.label)}</th>`).join('')}<th>Problem Palms</th>${reg ? '<th>Registered</th><th>Difference</th>' : ''}<th>Worker-hours</th><th>Palms per worker-hour</th><th>Minutes per palm</th><th>Overall Total</th></tr>`;
     const line = (o, r) => `<tr${r ? '' : ' style="font-weight:bold;background:#f0fdf4;"'}><td>${e(o.claif)}</td><td>${e(o.name)}</td><td>${r ? e(r.parcel) : 'ALL'}</td><td>${r ? e(r.farmBlock) : ''}</td><td>${r ? e(r.last) : e(o.last)}</td>
       ${PS_CATS.map((c) => `<td>${(r || o).v[c.key]}</td>`).join('')}<td>${(r || o).problem}</td>
-      ${reg ? `<td>${(r ? r.registered : o.registered) || ''}</td><td>${r ? (r.registered ? r.total - r.registered : '') : (o.registered ? o.diff : '')}</td>` : ''}<td>${(r || o).total}</td></tr>`;
+      ${reg ? `<td>${(r ? r.registered : o.registered) || ''}</td><td>${r ? (r.registered ? r.total - r.registered : '') : (o.registered ? o.diff : '')}</td>` : ''}${(() => { const x = r || o; const rate = x.wh > 0 ? x.total / x.wh : 0; return `<td>${Math.round(x.wh * 10) / 10}</td><td>${rate ? rate.toFixed(2) : ''}</td><td>${rate ? (60 / rate).toFixed(2) : ''}</td>`; })()}<td>${(r || o).total}</td></tr>`;
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body>
       <table border="1">${head}${d.owners.map((o) => line(o, null) + o.rows.map((r) => line(o, r)).join('')).join('')}</table></body></html>`;
     const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
